@@ -125,9 +125,9 @@ class OverlapCalculator():
         n = float(inputWidth)
         normValue = float(0.5/(n*(n+1.0)/2.0))
         #normValue = 1.0/float(2*inputWidth+2)
-        print "maxNormValue = %s" % (n*(n+1.0)/2.0)
-        print "normValue = %s" % normValue
-        print "tie Width = %s" % inputWidth
+        print("maxNormValue = %s" % (n*(n+1.0)/2.0))
+        print("normValue = %s" % normValue)
+        print("tie Width = %s" % inputWidth)
 
         rowsTie = np.arange(inputWidth)+1
         rowsTie = rowsTie*normValue
@@ -306,7 +306,7 @@ if __name__ == '__main__':
     # allCols = self.htm.regionArray[0].layerArray[0].columns.flatten()
     # colPotSynPerm = np.array([[allCols[j].potentialSynapses[i].permanence for i in range(36)] for j in range(1600)])
 
-    print "colSynPerm = \n%s" % colSynPerm
+    print("colSynPerm = \n%s" % colSynPerm)
     newInputMat = np.random.randint(2, size=(numInputRows, numInputCols))
 
     # Create an instance of the overlap calculation class
@@ -321,16 +321,16 @@ if __name__ == '__main__':
                                     minOverlap,
                                     wrapInput)
 
-    print "newInputMat = \n%s" % newInputMat
+    print("newInputMat = \n%s" % newInputMat)
 
     # Return both the overlap values and the inputs from
     # the potential synapses to all columns.
     colOverlaps, colPotInputs = overlapCalc.calculateOverlap(colSynPerm, newInputMat)
-    print "len(colOverlaps) = %s" % len(colOverlaps)
-    print "colOverlaps = \n%s" % colOverlaps
-    print "colPotInputs = \n%s" % colPotInputs
+    print( "len(colOverlaps) = %s" % len(colOverlaps))
+    print( "colOverlaps = \n%s" % colOverlaps)
+    print("colPotInputs = \n%s" % colPotInputs)
 
     # limit the overlap values so they are larger then minOverlap
     colOverlaps = overlapCalc.removeSmallOverlaps(colOverlaps)
 
-    print "colOverlaps = \n%s" % colOverlaps
+    print("colOverlaps = \n%s" % colOverlaps)

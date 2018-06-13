@@ -1,9 +1,14 @@
 import tensorflow as tf
 
 # This shows an example of using the convolve 2d tensorflow function and how to pad the input
-# and adjyst the kernel
+# and adjust the kernel
 
 '''
+paddings is an integer tensor with shape [n, 2], where n is the rank of tensor.
+For each dimension D of input, paddings[D, 0] indicates how many values to add before
+the contents of tensor in that dimension, and paddings[D, 1] indicates how many
+values to add after the contents of tensor in that dimension.
+
 t = tf.constant([[1, 2, 3], [4, 5, 6]])
 paddings = tf.constant([[1, 1,], [2, 2]])
 # 'constant_values' is 0.
@@ -25,7 +30,6 @@ tf.pad(t, paddings, "SYMMETRIC")  # [[2, 1, 1, 2, 3, 3, 2],
 '''
 
 
-
 k = tf.constant([
     [1, 1, 1],
     [1, 1, 1],
@@ -39,17 +43,16 @@ i = tf.constant([
     [1, 1, 0, 2]
 ], dtype=tf.float32, name='i')
 
-s = tf.constant(
-    [1, 1, 1, 1]
-, dtype=tf.float32, name='s')
+s = tf.constant([1, 1, 1, 1]
+                , dtype=tf.float32, name='s')
 
 kernel = tf.reshape(k, [3, 3, 1, 1], name='kernel')
-image  = tf.reshape(i, [1, 4, 4, 1], name='image')
-stride  = [1,1,1,1]
+image = tf.reshape(i, [1, 4, 4, 1], name='image')
+stride = [1, 1, 1, 1]
 
 # We will add our own padding so we can reflect the input.
 # This prevents the edges from being unfairly hindered due to a smaller overlap with the kernel.
-paddings = tf.constant([[0, 0,], [1, 1,], [1, 1], [0, 0,]])
+paddings = tf.constant([[0, 0], [1, 1], [1, 1], [0, 0]])
 padded_input = tf.pad(image, paddings, "REFLECT")
 
 # tf.squeeze Removes dimensions of size 1 from the shape of a tensor.
@@ -60,17 +63,19 @@ res = tf.squeeze(tf.nn.conv2d(padded_input, kernel, stride, "VALID"))
 logs_path = '/tmp/tensorflow_logs/example/tf_htm/'
 
 with tf.Session() as sess:
-	#sess.run(res)
-   	session =  sess.run(res)
-   	print(session)
-   #print(image.eval())
+    # sess.run(res)
+    session = sess.run(res)
+    print(padded_input)
+    print(session)
 
-   # op to write logs to Tensorboard
-	summary_writer = tf.summary.FileWriter(logs_path, graph=tf.get_default_graph())
+    #print(image.eval())
 
-	# Write logs at every iteration
-	#summary_writer.add_summary(summary, epoch * total_batch + i)
+    # op to write logs to Tensorboard
+    summary_writer = tf.summary.FileWriter(logs_path, graph=tf.get_default_graph())
 
-	print("\nRun the command line:\n" \
-	"--> tensorboard --logdir=/tmp/tensorflow_logs " \
-	"\nThen open http://0.0.0.0:6006/ into your web browser")
+    # Write logs at every iteration
+    # summary_writer.add_summary(summary, epoch * total_batch + i)
+
+    print("\nRun the command line:\n"
+          "--> tensorboard --logdir=/tmp/tensorflow_logs "
+          "\nThen open http://0.0.0.0:6006/ into your web browser")

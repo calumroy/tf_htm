@@ -89,16 +89,14 @@ class OverlapCalculator():
         self.colTieBreaker = np.array([0.0 for i in range(self.numColumns)])
         self.makeColTieBreaker(self.colTieBreaker)
 
-        # Create tf variables and functions
+        # Create tensorflow variables and functions
         ############################################
+
+        self.inGrid = tf.placeholder(tf.float32, [self.inputHeight, self.inputWidth], name='InputGrid')
 
 
         self.logs_path = '/tmp/tensorflow_logs/example/tf_htm/'
 
-        np_array_1 = np.random.rand(3, 2)
-        np_array_2 = np.random.rand(3, 2)
-
-        self.y = tf.multiply(np_array_1, np_array_2)
 
 
 
@@ -198,16 +196,74 @@ class OverlapCalculator():
         # the number of expected columns.
         assert self.numColumns == len(newColSynPerm)
 
+    def addPaddingToInput(self, inputGrid, useZeroPadVal=True):
+        # Add padding elements to the input Grid so that the
+        # convole function can convole over the input.
+        topPos_y = 0
+        bottomPos_y = 0
+        leftPos_x = 0
+        rightPos_x = 0
+
+        # This calcualtes how much of the input grid is not covered by
+        # the htm grid in each dimension using the step sizes.
+        leftOverWidth = self.inputWidth - (1 + (self.columnsWidth - 1) * self.stepX)
+        leftOverHeight = self.inputHeight - (1 + (self.columnsHeight - 1) * self.stepY)
+
+        if self.centerPotSynapses == 0:
+            # The potential synapses are not centered over the input
+            # This means only the right side and bottom of the input
+            # need padding.
+            topPos_y = 0
+            bottomPos_y = int(math.floor(self.potentialHeight-1) - math.floor(leftOverHeight))
+            leftPos_x = 0
+            rightPos_x = int(math.floor(self.potentialWidth-1) - math.floor(leftOverWidth))
+
+        else:
+            # The potential synapses are centered over the input
+            # This means all sides of the input may need padding
+            topPos_y = int(math.ceil(float(self.potentialHeight-1)/2) - math.ceil(float(leftOverHeight)/2))
+            bottomPos_y = int(math.floor(float(self.potentialHeight-1)/2) - math.floor(float(leftOverHeight)/2))
+
+            leftPos_x = int(math.ceil(float(self.potentialWidth-1)/2) - math.ceil(float(leftOverWidth)/2))
+            rightPos_x = int(math.floor(float(self.potentialWidth-1)/2) - math.floor(float(leftOverWidth)/2))
+
+        # Make sure all are larger then zero still
+        if topPos_y < 0:
+            topPos_y = 0
+        if bottomPos_y < 0:
+            bottomPos_y = 0
+        if leftPos_x < 0:
+            leftPos_x = 0
+        if rightPos_x < 0:
+            rightPos_x = 0
+
+        # Padding value
+        if useZeroPadVal is False:
+            padValue = -1
+        else:
+            padValue = 0
+
+        # Add the padding around the edges of the inputGrid
+        inputGrid = np.lib.pad(inputGrid,
+                               ((0, 0),
+                                (0, 0),
+                                (topPos_y, bottomPos_y),
+                                (leftPos_x, rightPos_x)),
+                               'constant',
+                               constant_values=(padValue))
+
+        # print "inputGrid = \n%s" % inputGrid
+
+        return inputGrid
+
     def getColInputs(self, inputGrid):
-        # This function uses theano's convolution function to
+        # This function uses a convolution function to
         # return the inputs that each column potentially connects to.
 
         # It ouputs a matrix where each row represents the potential pool of inputs
         # that one column in a layer can connect too.
 
         # Take the input and put it into a 4D tensor.
-        # This is because the theano function images2neibs
-        # works with 4D tensors only.
         inputGrid = np.array([[inputGrid]])
 
         # print "inputGrid.shape = %s,%s,%s,%s" % inputGrid.shape
@@ -245,17 +301,43 @@ class OverlapCalculator():
         return inputConPotSyn
 
 
+
+
+
+
+
+
     def calculateOverlap(self, colSynPerm, inputGrid):
 
         # Check that the new inputs are the same dimensions as the old ones
         # and the colsynPerm match the original specified parameters.
         self.checkNewInputParams(colSynPerm, inputGrid)
-        # Calcualte the inputs to each column
+
+        # Calculate the inputs to each column
         #import ipdb; ipdb.set_trace()
-        self.colInputPotSyn = self.getColInputs(inputGrid)
+        #self.colInputPotSyn = self.getColInputs(inputGrid)
+
+
+
+
+        # using a placeholder create a dataset
+        dataset = tf.data.Dataset.from_tensor_slices(self.inGrid)
+
+        # Create an iterator to iterate through our dataset.
+        iter = dataset.make_initializable_iterator() # create the iterator
+        el = iter.get_next()
+
+        # Calculate the inputs to each column
+        self.y = tf.multiply(el, el)
+
 
         # Start training
         with tf.Session() as sess:
+
+            # feed the placeholder with data
+            # The feed_dict is a dictionary holding the placeholders with the real data
+            sess.run(iter.initializer, feed_dict={ self.inGrid: inputGrid })
+            sess.run(el)
 
             # Run the initializer
             sess.run(self.y)
@@ -331,6 +413,6 @@ if __name__ == '__main__':
     print("colPotInputs = \n%s" % colPotInputs)
 
     # limit the overlap values so they are larger then minOverlap
-    colOverlaps = overlapCalc.removeSmallOverlaps(colOverlaps)
+    #colOverlaps = overlapCalc.removeSmallOverlaps(colOverlaps)
 
     print("colOverlaps = \n%s" % colOverlaps)

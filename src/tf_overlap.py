@@ -58,6 +58,9 @@ class OverlapCalculator():
         self.minOverlap = minOverlap
         self.inputWidth = inputWidth
         self.inputHeight = inputHeight
+        # How many inputs come in each timestep. If this is 3 then the new inputs
+        # should contain 3 new input grids.
+        self.numInputs = 1
         # Calculate how many columns are expected from these
         # parameters.
         self.columnsWidth = columnsWidth
@@ -92,10 +95,47 @@ class OverlapCalculator():
         # Create tensorflow variables and functions
         ############################################
 
-        self.inGrid = tf.placeholder(tf.float32, [self.inputHeight, self.inputWidth], name='InputGrid')
+        # Set the location to store the tensflow logs so we can run tensorboard.
+        self.logsPath = '/tmp/tensorflow_logs/example/tf_htm/'
+        # A variable to hold a tensor storing possibly multiple new input tensors (grids).
+        self.inGrids = tf.placeholder(tf.float32, [self.numInputs, self.inputHeight, self.inputWidth], name='InputGrids')
+        # variable to store just one new input tensor (one grid).
+        self.newGrid = tf.placeholder(tf.float32, [1, self.inputHeight, self.inputWidth], name='NewGrid')
+        # Using a placeholder create a dataset to store the new inputs in
+        dataset = tf.data.Dataset.from_tensor_slices(self.inGrids)
+        # Create an iterator to iterate through our dataset.
+        self.iter = dataset.make_initializable_iterator()
+        # Make the newGrid get just one grid from the dataset
+        self.newGrid = self.iter.get_next()
+
+        # Create the variables to use in the convolution.
+        # A variable to store the kernal used to workout the potential pool for each column
+        # The kernal must be a 4d tensor.
+        k = tf.constant([[1 for i in range(self.potentialWidth)]
+                        for j in range(self.potentialHeight)],
+                        dtype=tf.float32, name='k')
+        self.kernel = tf.reshape(k, [self.potentialHeight, self.potentialWidth, 1, 1], name='kernel')
+        # The image must be a 4d tensor for the convole function. Add some extra dimensions.
+        self.image = tf.reshape(self.newGrid, [1, self.inputHeight, self.inputWidth, 1], name='image')
+        # Create the stride and padding sizes to use.
+        self.stride = [1, self.stepX, self.stepY, 1]
+        [padL, padR, padU, padD] = self.getPaddingSizes()
+        self.paddings = tf.constant([[0, 0], [padU, padD], [padL, padR], [0, 0]])
+        # set the padding and stride sizes.
+
+        # We will add our own padding so we can reflect the input.
+        # This prevents the edges from being unfairly hindered due to a smaller overlap with the kernel.
+        self.paddedInput = tf.pad(self.image, self.paddings, "REFLECT")
+        # tf.squeeze Removes dimensions of size 1 from the shape of a tensor.
+        # "VALID" only ever drops the right-most columns (or bottom-most rows).
+        self.res = tf.squeeze(tf.nn.conv2d(self.paddedInput, self.kernel, self.stride, "VALID"))
 
 
-        self.logs_path = '/tmp/tensorflow_logs/example/tf_htm/'
+        # Print the output. Use a print node in the graph. The first input is the input data to pass to this node,
+        # the second is an array of which nodes in the graph you would like to print
+        #pr_mult = tf.Print(mult_y, [mult_y, newGrid], summarize = 25)
+        self.pr_mult = tf.Print(self.res, [self.paddedInput, self.res], summarize = 25)
+
 
 
 
@@ -189,22 +229,22 @@ class OverlapCalculator():
     def checkNewInputParams(self, newColSynPerm, newInput):
         # Check that the new input has the same dimensions as the
         # originally defined input parameters.
-        assert self.inputWidth == len(newInput[0])
-        assert self.inputHeight == len(newInput)
+        assert self.numInputs == len(newInput)
+        assert self.inputHeight == len(newInput[0])
+        assert self.inputWidth == len(newInput[0][0])
         assert self.potentialWidth * self.potentialHeight == len(newColSynPerm[0])
         # Check the number of rows in the newColSynPerm matrix equals
         # the number of expected columns.
         assert self.numColumns == len(newColSynPerm)
 
-    def addPaddingToInput(self, inputGrid, useZeroPadVal=True):
-        # Add padding elements to the input Grid so that the
-        # convole function can convole over the input.
+    def getPaddingSizes(self):
+        # Calculate the amount of padding to add to each dimension.
         topPos_y = 0
         bottomPos_y = 0
         leftPos_x = 0
         rightPos_x = 0
 
-        # This calcualtes how much of the input grid is not covered by
+        # This calculates how much of the input grid is not covered by
         # the htm grid in each dimension using the step sizes.
         leftOverWidth = self.inputWidth - (1 + (self.columnsWidth - 1) * self.stepX)
         leftOverHeight = self.inputHeight - (1 + (self.columnsHeight - 1) * self.stepY)
@@ -236,8 +276,14 @@ class OverlapCalculator():
             leftPos_x = 0
         if rightPos_x < 0:
             rightPos_x = 0
+        # Return the padding sizes
+        return [topPos_y, bottomPos_y, leftPos_x, rightPos_x]
 
-        # Padding value
+    def addPaddingToInput(self, inputGrid, useZeroPadVal=True):
+        # Add padding elements to the input Grid so that the
+        # convole function can convole over the input.
+        # Padding value.
+        [topPos_y, bottomPos_y, leftPos_x, rightPos_x] = self.getPaddingSizes()
         if useZeroPadVal is False:
             padValue = -1
         else:
@@ -307,6 +353,8 @@ class OverlapCalculator():
 
 
 
+
+
     def calculateOverlap(self, colSynPerm, inputGrid):
 
         # Check that the new inputs are the same dimensions as the old ones
@@ -314,39 +362,34 @@ class OverlapCalculator():
         self.checkNewInputParams(colSynPerm, inputGrid)
 
         # Calculate the inputs to each column
-        #import ipdb; ipdb.set_trace()
-        #self.colInputPotSyn = self.getColInputs(inputGrid)
-
-
-
-
-        # using a placeholder create a dataset
-        dataset = tf.data.Dataset.from_tensor_slices(self.inGrid)
-
-        # Create an iterator to iterate through our dataset.
-        iter = dataset.make_initializable_iterator() # create the iterator
-        el = iter.get_next()
+        # import ipdb; ipdb.set_trace()
+        # self.colInputPotSyn = self.getColInputs(inputGrid)
 
         # Calculate the inputs to each column
-        self.y = tf.multiply(el, el)
-
 
         # Start training
         with tf.Session() as sess:
 
             # feed the placeholder with data
             # The feed_dict is a dictionary holding the placeholders with the real data
-            sess.run(iter.initializer, feed_dict={ self.inGrid: inputGrid })
-            sess.run(el)
+            sess.run(self.iter.initializer, feed_dict={self.inGrids: inputGrid})
+            #sess.run(self.newGrid)
+            convole = sess.run(self.pr_mult)
+            print(convole)
+            #print("self.newGrid = \n%s" % self.newGrid )
+
+            # Convert the input grid to a 4d tensor so it can be used in the conv2d funct
+            #image = tf.reshape(self.newGrid, [1, self.inputWidth, self.inputHeight, 1], name='image')
+
 
             # Run the initializer
-            sess.run(self.y)
+            #sess.run(self.y)
 
-            print("Y tensor values after calculation \n")
-            print(self.y.eval())
+            #print("Y tensor values after calculation \n")
+            #print(self.y.eval())
 
             # op to write logs to Tensorboard
-            summary_writer = tf.summary.FileWriter(self.logs_path, graph=tf.get_default_graph())
+            summary_writer = tf.summary.FileWriter(self.logsPath, graph=tf.get_default_graph())
 
             # Write logs at every iteration
             #summary_writer.add_summary(summary, epoch * total_batch + i)
@@ -372,10 +415,11 @@ if __name__ == '__main__':
     potWidth = 3
     potHeight = 3
     centerPotSynapses = 1
-    numInputRows = 4
-    numInputCols = 5
-    numColumnRows = 4
+    numInputRows = 3
+    numInputCols = 3
+    numColumnRows = 3
     numColumnCols = 4
+    numInputs = 1
     connectedPerm = 0.3
     minOverlap = 3
     numPotSyn = potWidth * potHeight
@@ -388,8 +432,7 @@ if __name__ == '__main__':
     # allCols = self.htm.regionArray[0].layerArray[0].columns.flatten()
     # colPotSynPerm = np.array([[allCols[j].potentialSynapses[i].permanence for i in range(36)] for j in range(1600)])
 
-    print("colSynPerm = \n%s" % colSynPerm)
-    newInputMat = np.random.randint(2, size=(numInputRows, numInputCols))
+    #print("colSynPerm = \n%s" % colSynPerm)
 
     # Create an instance of the overlap calculation class
     overlapCalc = OverlapCalculator(potWidth,
@@ -403,16 +446,19 @@ if __name__ == '__main__':
                                     minOverlap,
                                     wrapInput)
 
+    newInputMat = np.array([np.random.randint(2, size=(numInputRows, numInputCols))])
+
     print("newInputMat = \n%s" % newInputMat)
+
 
     # Return both the overlap values and the inputs from
     # the potential synapses to all columns.
     colOverlaps, colPotInputs = overlapCalc.calculateOverlap(colSynPerm, newInputMat)
-    print( "len(colOverlaps) = %s" % len(colOverlaps))
-    print( "colOverlaps = \n%s" % colOverlaps)
-    print("colPotInputs = \n%s" % colPotInputs)
+    #print( "len(colOverlaps) = %s" % len(colOverlaps))
+    #print( "colOverlaps = \n%s" % colOverlaps)
+    #print("colPotInputs = \n%s" % colPotInputs)
 
     # limit the overlap values so they are larger then minOverlap
     #colOverlaps = overlapCalc.removeSmallOverlaps(colOverlaps)
 
-    print("colOverlaps = \n%s" % colOverlaps)
+    #print("colOverlaps = \n%s" % colOverlaps)

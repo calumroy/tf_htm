@@ -56,6 +56,8 @@ paddings = tf.constant([[0, 0], [1, 1], [1, 1], [0, 0]])
 padded_input = tf.pad(image, paddings, "REFLECT")
 
 # tf.squeeze Removes dimensions of size 1 from the shape of a tensor.
+# "VALID" only ever drops the right-most columns (or bottom-most rows).
+# "SAME" tries to pad evenly left and right, but if the amount of columns to be added is odd, it will add the extra column to the right, as is the case in this example (the same logic applies vertically: there may be an extra row of zeros at the bottom).
 res = tf.squeeze(tf.nn.conv2d(padded_input, kernel, stride, "VALID"))
 # VALID means no padding
 # "SAME" means use padding
@@ -63,9 +65,10 @@ res = tf.squeeze(tf.nn.conv2d(padded_input, kernel, stride, "VALID"))
 logs_path = '/tmp/tensorflow_logs/example/tf_htm/'
 
 with tf.Session() as sess:
-    # sess.run(res)
+    #sess.run(res)
     session = sess.run(res)
     print(padded_input)
+    print(i.eval())
     print(session)
 
     #print(image.eval())

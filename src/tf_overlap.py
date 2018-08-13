@@ -3,6 +3,8 @@ import numpy as np
 import math
 import random
 
+from datetime import datetime
+
 
 '''
 A class used to calculate the overlap values for columns
@@ -66,7 +68,7 @@ class OverlapCalculator():
         self.columnsWidth = columnsWidth
         self.columnsHeight = columnsHeight
         self.numColumns = columnsWidth * columnsHeight
-        # Store the potetnial inputs to every column.
+        # Store the potential inputs to every column.
         # Each row represents the inputs a columns potential synapses cover.
         self.colInputPotSyn = None
         # Store the potential overlap values for every column
@@ -97,46 +99,118 @@ class OverlapCalculator():
 
         # Set the location to store the tensflow logs so we can run tensorboard.
         self.logsPath = '/tmp/tensorflow_logs/example/tf_htm/'
-        # A variable to hold a tensor storing possibly multiple new input tensors (grids).
-        self.inGrids = tf.placeholder(tf.float32, [self.numInputs, self.inputHeight, self.inputWidth], name='InputGrids')
-        # variable to store just one new input tensor (one grid).
-        self.newGrid = tf.placeholder(tf.float32, [1, self.inputHeight, self.inputWidth], name='NewGrid')
-        # Using a placeholder create a dataset to store the new inputs in
-        dataset = tf.data.Dataset.from_tensor_slices(self.inGrids)
-        # Create an iterator to iterate through our dataset.
-        self.iter = dataset.make_initializable_iterator()
-        # Make the newGrid get just one grid from the dataset
-        self.newGrid = self.iter.get_next()
+        now = datetime.now()
+        self.logsPath = self.logsPath + now.strftime("%Y%m%d-%H%M%S") + "/"
 
-        # Create the variables to use in the convolution.
-        # A variable to store the kernal used to workout the potential pool for each column
-        # The kernal must be a 4d tensor.
-        k = tf.constant([[1 for i in range(self.potentialWidth)]
-                        for j in range(self.potentialHeight)],
-                        dtype=tf.float32, name='k')
-        self.kernel = tf.reshape(k, [self.potentialHeight, self.potentialWidth, 1, 1], name='kernel')
-        # The image must be a 4d tensor for the convole function. Add some extra dimensions.
-        self.image = tf.reshape(self.newGrid, [1, self.inputHeight, self.inputWidth, 1], name='image')
-        # Create the stride and padding sizes to use.
-        self.stride = [1, self.stepX, self.stepY, 1]
-        [padL, padR, padU, padD] = self.getPaddingSizes()
-        self.paddings = tf.constant([[0, 0], [padU, padD], [padL, padR], [0, 0]])
-        # set the padding and stride sizes.
+        with tf.name_scope('inputs'):
+            # A variable to hold a tensor storing possibly multiple new input tensors (grids).
+            self.inGrids = tf.placeholder(tf.float32, [self.numInputs, self.inputHeight, self.inputWidth], name='InputGrids')
+            # variable to store just one new input tensor (one grid).
+            self.newGrid = tf.placeholder(tf.float32, [1, self.inputHeight, self.inputWidth], name='NewGrid')
+            # Using a placeholder create a dataset to store the new inputs in
+            dataset = tf.data.Dataset.from_tensor_slices(self.inGrids)
+            # Create an iterator to iterate through our dataset.
+            self.iter = dataset.make_initializable_iterator()
+            # Make the newGrid get just one grid from the dataset
+            self.newGrid = self.iter.get_next()
 
-        # We will add our own padding so we can reflect the input.
-        # This prevents the edges from being unfairly hindered due to a smaller overlap with the kernel.
-        self.paddedInput = tf.pad(self.image, self.paddings, "REFLECT")
-        # tf.squeeze Removes dimensions of size 1 from the shape of a tensor.
-        # "VALID" only ever drops the right-most columns (or bottom-most rows).
-        self.res = tf.squeeze(tf.nn.conv2d(self.paddedInput, self.kernel, self.stride, "VALID"))
+        # Create the potential pool of inputs each column in the HTM could conenct to.
+        with tf.name_scope('getColInputs'):
+
+            # Create the variables to use in the convolution.
+            with tf.name_scope('inputNeighbours'):
+                # A variable to store the kernal used to workout the potential pool for each column
+                # The kernal must be a 4d tensor.
+                #k = tf.constant([[1 for i in range(self.potentialWidth)]
+                #                for j in range(self.potentialHeight)],
+                #                dtype=tf.float32, name='k')
+                #self.kernel = tf.reshape(k, [self.potentialHeight, self.potentialWidth, 1, 1], name='kernel')
+                self.kernel = [1, self.potentialHeight, self.potentialWidth, 1]
+                # The image must be a 4d tensor for the convole function. Add some extra dimensions.
+                self.image = tf.reshape(self.newGrid, [1, self.inputHeight, self.inputWidth, 1], name='image')
+                # Create the stride for the convolution
+                self.stride = [1, self.stepX, self.stepY, 1]
+
+                # Create the padding sizes to use and the padding node.
+                with tf.name_scope('padding'):
+                    [padL, padR, padU, padD] = self.getPaddingSizes()
+                    self.paddings = tf.constant([[0, 0], [padU, padD], [padL, padR], [0, 0]])
+                    # set the padding
+                    if self.wrapInput is True:
+                        # We will add our own padding so we can reflect the input.
+                        # This prevents the edges from being unfairly hindered due to a smaller overlap with the kernel.
+                        self.paddedInput = tf.pad(self.image, self.paddings, "REFLECT")
+                    else:
+                        self.paddedInput = tf.pad(self.image, self.paddings, "CONSTANT")
+
+                # "VALID" only ever drops the right-most columns (or bottom-most rows).
+                # self.overlapImage = tf.nn.conv2d(self.paddedInput, self.kernel, self.stride, "VALID")
+                # Rates can be used to set how many pixels between each slected pixel are skipped.
+                self.imageNeib4d = tf.extract_image_patches(images=self.paddedInput,
+                                                            ksizes=self.kernel,
+                                                            strides=self.stride,
+                                                            rates=[1, 1, 1, 1],
+                                                            padding='VALID')
+                # Reshape rates as the output is 3 dimensional and we only require 2 dimesnions
+                # A list for each of the htm columns that shows what each columns can potentially connect to.
+                self.imageNeib = tf.reshape(self.imageNeib4d,
+                                            [self.potentialHeight*self.potentialWidth,
+                                             self.numColumns], name='overlapImage')
+
+                # tf.squeeze Removes dimensions of size 1 from the shape of a tensor.
+                self.colInputPotSyn = tf.squeeze(self.imageNeib)
+
+        # Create variables to store certain tensors in our graph.
+        with tf.name_scope('storedVars'):
+            # We set these variables as non trainable since we are not using back propagation.
+            self.storedColInputPotSyn = tf.get_variable("storedColInputPotSyn",
+                                                        shape=self.colInputPotSyn.get_shape().as_list(),
+                                                        dtype=tf.float32,
+                                                        initializer=tf.zeros_initializer,
+                                                        trainable=False)
+            self.storedColInputPotSyn = self.storedColInputPotSyn.assign(self.colInputPotSyn)
+
+            self.prevGrid = tf.get_variable("prevGrid",
+                                            shape=self.paddedInput.get_shape().as_list(),
+                                            dtype=tf.float32,
+                                            initializer=tf.zeros_initializer,
+                                            trainable=False)
+            self.prevPaddInput = self.prevGrid.assign(self.paddedInput)
+
+            prevOverlap = tf.get_variable("prevOverlap",
+                                          shape=self.colInputPotSyn.get_shape().as_list(),
+                                          dtype=tf.float32,
+                                          initializer=tf.zeros_initializer,
+                                          trainable=False)
+            self.prevOverlap = prevOverlap.assign(self.colInputPotSyn)
+
+        # Add a masked small tiebreaker value to the self.colInputPotSyn scores.
+        with tf.name_scope('maskTiebreaker'):
+            print("colInputPotSyn.shape = %s" % self.colInputPotSyn.shape)
+            print("potSynTieBreaker.shape = %s,%s" % self.potSynTieBreaker.shape)
+            self.colInputPotSynTie = tf.multiply(self.colInputPotSyn, self.potSynTieBreaker)
+
 
 
         # Print the output. Use a print node in the graph. The first input is the input data to pass to this node,
         # the second is an array of which nodes in the graph you would like to print
         #pr_mult = tf.Print(mult_y, [mult_y, newGrid], summarize = 25)
-        self.pr_mult = tf.Print(self.res, [self.paddedInput, self.res], summarize = 25)
+        self.pr_mult = tf.Print(self.colInputPotSynTie, [self.paddedInput, self.colInputPotSynTie], message="Print", summarize = 25)
 
 
+        # Create a summary to monitor padded input tensor
+        tf.summary.histogram("paddedInput", self.paddedInput)
+        # Create images from the  inputs to display in tensorboard
+        with tf.name_scope('tbImages'):
+            self.InputFloat = tf.to_float(self.image)
+            tf.summary.image("InputImage", self.InputFloat)
+            self.paddedInputFloat = tf.to_float(self.paddedInput)
+            tf.summary.image("paddedInputImage", self.paddedInputFloat)
+            #self.colInputPotSynFloat = tf.to_float(self.imageNeib4d)
+            #tf.summary.image("colInputPotSyn", self.colInputPotSynFloat)
+
+        ## op to write logs to Tensorboard
+        self.summary_writer = tf.summary.FileWriter(self.logsPath, graph=tf.get_default_graph())
 
 
 
@@ -152,7 +226,7 @@ class OverlapCalculator():
         # has a different pattern of tie breaker values. THis is done by sliding the previous
         # rows values along by 1 and wrapping at the end of the row.
         # They are used  to resolve situations where columns have the same overlap number.
-        # The purpose of
+
         inputHeight = len(tieBreaker)
         inputWidth = len(tieBreaker[0])
 
@@ -370,29 +444,18 @@ class OverlapCalculator():
         # Start training
         with tf.Session() as sess:
 
-            # feed the placeholder with data
+            ## Merge all the summaries into one tensorflow operation
+            merge = tf.summary.merge_all()
+
+            # feed the placeholder with data. This puts the next input into our graph.
             # The feed_dict is a dictionary holding the placeholders with the real data
             sess.run(self.iter.initializer, feed_dict={self.inGrids: inputGrid})
-            #sess.run(self.newGrid)
-            convole = sess.run(self.pr_mult)
+            # Run the tensor flow overlap graph and get the summary for tensorboard.
+            summary, convole = sess.run([merge, self.pr_mult])
             print(convole)
-            #print("self.newGrid = \n%s" % self.newGrid )
-
-            # Convert the input grid to a 4d tensor so it can be used in the conv2d funct
-            #image = tf.reshape(self.newGrid, [1, self.inputWidth, self.inputHeight, 1], name='image')
-
-
-            # Run the initializer
-            #sess.run(self.y)
-
-            #print("Y tensor values after calculation \n")
-            #print(self.y.eval())
-
-            # op to write logs to Tensorboard
-            summary_writer = tf.summary.FileWriter(self.logsPath, graph=tf.get_default_graph())
 
             # Write logs at every iteration
-            #summary_writer.add_summary(summary, epoch * total_batch + i)
+            self.summary_writer.add_summary(summary)
 
             print("\nRun the command line:\n" \
           "--> tensorboard --logdir=/tmp/tensorflow_logs " \
@@ -418,7 +481,7 @@ if __name__ == '__main__':
     numInputRows = 3
     numInputCols = 3
     numColumnRows = 3
-    numColumnCols = 4
+    numColumnCols = 3
     numInputs = 1
     connectedPerm = 0.3
     minOverlap = 3

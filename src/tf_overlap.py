@@ -162,19 +162,23 @@ class OverlapCalculator():
 
         # Add a masked small tiebreaker value to the self.colInputPotSyn scores.
         with tf.name_scope('maskTiebreaker'):
+            # Multiply the tiebreaker values by the colInputPotSyn then add them to it.
+            # Since the colInputPotSyn contains ones and zeros some tiebreaker values are
+            # masked out. This means the tie breaker will be different for each input
+            # pattern.
             # print("colInputPotSyn.shape = %s" % self.colInputPotSyn.shape)
             # print("potSynTieBreaker.shape = %s,%s" % self.potSynTieBreaker.shape)
             self.potSynTieBreakerTf = tf.convert_to_tensor(self.potSynTieBreaker, np.float32, name='potSynTieBreaker')
-            self.colInputPotSynTie = tf.multiply(self.colInputPotSyn, self.potSynTieBreakerTf)
+            self.maskedTieBreaker = tf.multiply(self.colInputPotSyn, self.potSynTieBreakerTf)
+            self.colInputPotSynTie = tf.add(self.colInputPotSyn, self.maskedTieBreaker)
 
         # Calculate the potential overlap scores for every column.
         # Sum the potential inputs for every column.
         with tf.name_scope('potOverlap'):
             self.colPotOverlaps = tf.reduce_sum(self.colInputPotSynTie, 1)
 
-        # Call the theano functions to calculate the overlap value.
+        # Call the tf functions to calculate the overlap value.
         with tf.name_scope('overlap'):
-            #self.connectedSynInputs = self.getConnectedSynInput(self.colSynPerm, self.colInputPotSyn)
             # Each synapse is check to see if it is connected.
             # If so then the input that synapse connects to is returned, zero otherwise.
             # We have to cast the output of the comparison from a bool to a float so it can be multiplied.
@@ -183,9 +187,6 @@ class OverlapCalculator():
                                                           tf.greater(self.colSynPerm, self.connectedPermParam),
                                                           tf.float32),
                                                   self.colInputPotSyn)
-                                              #false_fn=lambda: self.zerosMat)
-            #self.checkConn = T.switch(T.lt(self.connectedPermParam, self.j), self.k, 0.0)
-
             # Compute the sum of all the inputs that are connected to a synapses. This is the overlap score of an HTM column.
             # This is done over the first dimension to sum all the synapses for one column.
             self.colOverlapVals = tf.reduce_sum(self.connectedSynInputs, 1)
@@ -197,39 +198,39 @@ class OverlapCalculator():
             # pr_mult = tf.Print(mult_y, [mult_y, newGrid], summarize = 25)
             self.pr_mult = tf.Print(self.colOverlapVals,
                                     [self.colInputPotSyn, self.colPotOverlaps],
-                                    message="Print", summarize=25)
+                                    message="Print", summarize=100)
 
         # Create variables to store certain tensors in our graph.
         with tf.name_scope('storedVars'):
             # We set these variables as non trainable since we are not using back propagation.
-            self.storedColInputPotSyn = tf.get_variable("storedColInputPotSyn",
-                                                        shape=self.colInputPotSyn.get_shape().as_list(),
-                                                        dtype=tf.float32,
-                                                        initializer=tf.zeros_initializer,
-                                                        trainable=False)
-            self.storedColInputPotSyn = self.storedColInputPotSyn.assign(self.colInputPotSyn)
+            self.prevColInputPotSyn = tf.get_variable("prevColInputPotSyn",
+                                                      shape=self.colInputPotSyn.get_shape().as_list(),
+                                                      dtype=tf.float32,
+                                                      initializer=tf.zeros_initializer,
+                                                      trainable=False)
+            self.prevColInputPotSyn = self.prevColInputPotSyn.assign(self.colInputPotSyn)
 
             # We set these variables as non trainable since we are not using back propagation.
-            self.storedColSynPerm = tf.get_variable("storedColSynPerm",
-                                                    shape=self.colSynPerm.get_shape().as_list(),
-                                                    dtype=tf.float32,
-                                                    initializer=tf.zeros_initializer,
-                                                    trainable=False)
-            self.storedColSynPerm = self.storedColSynPerm.assign(self.colSynPerm)
+            self.prevColSynPerm = tf.get_variable("prevColSynPerm",
+                                                  shape=self.colSynPerm.get_shape().as_list(),
+                                                  dtype=tf.float32,
+                                                  initializer=tf.zeros_initializer,
+                                                  trainable=False)
+            self.prevColSynPerm = self.prevColSynPerm.assign(self.colSynPerm)
 
-            self.prevGrid = tf.get_variable("prevGrid",
-                                            shape=self.paddedInput.get_shape().as_list(),
-                                            dtype=tf.float32,
-                                            initializer=tf.zeros_initializer,
-                                            trainable=False)
-            self.prevPaddInput = self.prevGrid.assign(self.paddedInput)
+            self.prevColPotOverlaps = tf.get_variable("prevColPotOverlaps",
+                                                      shape=self.colPotOverlaps.get_shape().as_list(),
+                                                      dtype=tf.float32,
+                                                      initializer=tf.zeros_initializer,
+                                                      trainable=False)
+            self.prevColPotOverlaps = self.prevColPotOverlaps.assign(self.colPotOverlaps)
 
-            prevOverlap = tf.get_variable("prevOverlap",
-                                          shape=self.colInputPotSyn.get_shape().as_list(),
-                                          dtype=tf.float32,
-                                          initializer=tf.zeros_initializer,
-                                          trainable=False)
-            self.prevOverlap = prevOverlap.assign(self.colInputPotSyn)
+            self.prevOverlap = tf.get_variable("prevOverlap",
+                                               shape=self.colOverlapVals.get_shape().as_list(),
+                                               dtype=tf.float32,
+                                               initializer=tf.zeros_initializer,
+                                               trainable=False)
+            self.prevOverlap = self.prevOverlap.assign(self.colOverlapVals)
 
         # Create a summary to monitor padded input tensor
         tf.summary.histogram("paddedInput", self.paddedInput)
@@ -244,11 +245,6 @@ class OverlapCalculator():
 
         # op to write logs to Tensorboard
         self.summary_writer = tf.summary.FileWriter(self.logsPath, graph=tf.get_default_graph())
-
-
-
-
-
 
     def makePotSynTieBreaker(self, tieBreaker):
         # create a tie breaker matrix holding small values for each element in
@@ -476,6 +472,7 @@ class OverlapCalculator():
 
         # Start training
         with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
 
             ## Merge all the summaries into one tensorflow operation
             merge = tf.summary.merge_all()
@@ -484,25 +481,23 @@ class OverlapCalculator():
             # The feed_dict is a dictionary holding the placeholders with the real data
             sess.run(self.iter.initializer, feed_dict={self.inGrids: inputGrid})
             # Run the tensor flow overlap graph and get the summary for tensorboard.
-            summary, overlap = sess.run([merge, self.pr_mult], feed_dict={self.colSynPerm: colSynPerm})
+            summary, overlap, colInPotSyn = sess.run([merge,
+                                                      self.pr_mult,
+                                                      self.prevColInputPotSyn],
+                                                     feed_dict={self.colSynPerm: colSynPerm})
 
+            #print("colInPotSyn = \n%s" % colInPotSyn)
             print("overlap = \n%s" % overlap)
 
             # Write logs at every iteration
             self.summary_writer.add_summary(summary)
 
-            print("\nRun the command line:\n" \
-          "--> tensorboard --logdir=/tmp/tensorflow_logs " \
-          "\nThen open http://0.0.0.0:6006/ into your web browser")
+            print("\nRun the command line:\n"
+                  "--> tensorboard --logdir=/tmp/tensorflow_logs "
+                  "\nThen open http://0.0.0.0:6006/ into your web browser")
 
-
-
-
-        self.colInputPotSyn = colSynPerm
-        colOverlapVals = inputGrid
-
-        #print "colOverlapVals = \n%s" % colOverlapVals.reshape((self.columnsWidth, self.columnsHeight))
-        return colOverlapVals, self.colInputPotSyn
+            print "colOverlapVals = \n%s" % overlap.reshape((self.columnsWidth, self.columnsHeight))
+        return overlap, colInPotSyn
 
 
 
@@ -524,10 +519,12 @@ if __name__ == '__main__':
     wrapInput = False
 
     # Create an array representing the permanences of colums synapses
-    #colSynPerm = np.random.rand(numColumns, numPotSyn)
-    colSynPerm = np.ones((numColumns, numPotSyn))
+    colSynPerm = np.random.rand(numColumns, numPotSyn)
+    # Print the synapses where the synapse is connected
+    # print("colSynPerm = \n%s" % colSynPerm)
+    conColSynPerm = np.array(np.where(colSynPerm > connectedPerm, 1, 0))
+    print("conColSynPerm = \n%s" % conColSynPerm)
 
-    #print("colSynPerm = \n%s" % colSynPerm)
 
     # Create an instance of the overlap calculation class
     overlapCalc = OverlapCalculator(potWidth,

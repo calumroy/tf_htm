@@ -2,8 +2,8 @@ import tensorflow as tf
 import numpy as np
 
 # An example use of tensorflows iteratable datasets
-# Here we make a data set form an array of tensors.
-# THe iterator is used in the compute graph to pull each
+# Here we make a data set from an array of tensors.
+# The iterator is used in the compute graph to pull each
 # tensor from the data set and perform a calculation on it.
 # We also add a print node into the graph allowing us to print
 # the tensor values of an node at a point during the calculation.

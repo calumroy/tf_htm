@@ -44,7 +44,7 @@ class OverlapCalculator():
                  columnsWidth, columnsHeight,
                  inputWidth, inputHeight,
                  centerPotSynapses, connectedPerm,
-                 minOverlap, wrapInput):
+                 minOverlap, wrapInput, numInputs=1):
 
         # Overlap Parameters
         ###########################################
@@ -63,7 +63,7 @@ class OverlapCalculator():
         self.inputHeight = inputHeight
         # How many inputs come in each timestep. If this is 3 then the new inputs
         # should contain 3 new input grids.
-        self.numInputs = 1
+        self.numInputs = numInputs
         # Calculate how many columns are expected from these
         # parameters.
         self.columnsWidth = columnsWidth
@@ -190,13 +190,16 @@ class OverlapCalculator():
             # Compute the sum of all the inputs that are connected to a synapses. This is the overlap score of an HTM column.
             # This is done over the first dimension to sum all the synapses for one column.
             self.colOverlapVals = tf.reduce_sum(self.connectedSynInputs, 1)
+            # Add a small tiebreaker value to the column overlap scores vector.
+            self.colOverlapValsTie = tf.add(self.colOverlapVals, self.colTieBreaker)
+
 
         # Print the output.
         with tf.name_scope('print'):
             # Use a print node in the graph. The first input is the input data to pass to this node,
             # the second is an array of which nodes in the graph you would like to print
             # pr_mult = tf.Print(mult_y, [mult_y, newGrid], summarize = 25)
-            self.pr_mult = tf.Print(self.colOverlapVals,
+            self.pr_mult = tf.Print(self.colOverlapValsTie,
                                     [self.colInputPotSyn, self.colPotOverlaps],
                                     message="Print", summarize=100)
 
@@ -226,11 +229,11 @@ class OverlapCalculator():
             self.prevColPotOverlaps = self.prevColPotOverlaps.assign(self.colPotOverlaps)
 
             self.prevOverlap = tf.get_variable("prevOverlap",
-                                               shape=self.colOverlapVals.get_shape().as_list(),
+                                               shape=self.colOverlapValsTie.get_shape().as_list(),
                                                dtype=tf.float32,
                                                initializer=tf.zeros_initializer,
                                                trainable=False)
-            self.prevOverlap = self.prevOverlap.assign(self.colOverlapVals)
+            self.prevOverlap = self.prevOverlap.assign(self.colOverlapValsTie)
 
         # Create a summary to monitor padded input tensor
         tf.summary.histogram("paddedInput", self.paddedInput)
@@ -281,7 +284,7 @@ class OverlapCalculator():
         # Create a tiebreaker that changes for each row.
         for j in range(len(tieBreaker)):
             tieBreaker[j] = random.sample(rowsTie, len(rowsTie))
-        # print "self.tieBreaker = \n%s" % self.tieBreaker
+        # print("self.tieBreaker = \n%s" % self.tieBreaker)
 
     def makeColTieBreaker(self, tieBreaker):
         # Make a vector of tiebreaker values to add to the columns overlap values vector.
@@ -332,7 +335,9 @@ class OverlapCalculator():
     def checkNewInputParams(self, newColSynPerm, newInput):
         # Check that the new input has the same dimensions as the
         # originally defined input parameters.
+        #print("self.numInputs = %s len(newInput) = %s" %(self.numInputs, len(newInput)))
         assert self.numInputs == len(newInput)
+        #print("self.inputHeight = %s len(newInput[0]) = %s" %(self.inputHeight, len(newInput[0])))
         assert self.inputHeight == len(newInput[0])
         assert self.inputWidth == len(newInput[0][0])
         assert self.potentialWidth * self.potentialHeight == len(newColSynPerm[0])
@@ -401,7 +406,7 @@ class OverlapCalculator():
                                'constant',
                                constant_values=(padValue))
 
-        # print "inputGrid = \n%s" % inputGrid
+        # print("inputGrid = \n%s" % inputGrid)
 
         return inputGrid
 
@@ -415,7 +420,7 @@ class OverlapCalculator():
         # Take the input and put it into a 4D tensor.
         inputGrid = np.array([[inputGrid]])
 
-        # print "inputGrid.shape = %s,%s,%s,%s" % inputGrid.shape
+        # print("inputGrid.shape = %s,%s,%s,%s" % inputGrid.shape)
         firstDim, secondDim, width, height = inputGrid.shape
 
         # If we are not using the wrap input function then padding will need to be added
@@ -425,11 +430,11 @@ class OverlapCalculator():
             # using the defined potential width and potential height.
             inputGrid = self.addPaddingToInput(inputGrid)
 
-        # print "padded InputGrid = \n%s" % inputGrid
-        # print "inputGrid.shape = %s,%s,%s,%s" % inputGrid.shape
-        # print "self.potentialWidth = %s" % self.potentialWidth
-        # print "self.potentialHeight = %s" % self.potentialHeight
-        # print "self.stepX = %s, self.stepY = %s" % (self.stepX, self.stepY)
+        # print("padded InputGrid = \n%s" % inputGrid)
+        # print("inputGrid.shape = %s,%s,%s,%s" % inputGrid.shape)
+        # print("self.potentialWidth = %s" % self.potentialWidth)
+        # print("self.potentialHeight = %s" % self.potentialHeight)
+        # print("self.stepX = %s, self.stepY = %s" % (self.stepX, self.stepY))
         # Calculate the inputs to each column.
         if self.wrapInput == True:
             # Wrap the input grid to create the potential pool for each column.
@@ -445,8 +450,8 @@ class OverlapCalculator():
             # Don't wrap the input. The columns on the edges have a smaller potential input pool.
             inputConPotSyn = self.pool_inputs(inputGrid)
         # The returned array is within a list so just use pos 0.
-        # print "inputConPotSyn = \n%s" % inputConPotSyn
-        # print "inputConPotSyn.shape = %s,%s" % inputConPotSyn.shape
+        # print("inputConPotSyn = \n%s" % inputConPotSyn)
+        # print("inputConPotSyn.shape = %s,%s" % inputConPotSyn.shape)
         return inputConPotSyn
 
 
@@ -474,20 +479,28 @@ class OverlapCalculator():
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
 
-            ## Merge all the summaries into one tensorflow operation
+            # Merge all the summaries into one tensorflow operation
             merge = tf.summary.merge_all()
 
             # feed the placeholder with data. This puts the next input into our graph.
             # The feed_dict is a dictionary holding the placeholders with the real data
             sess.run(self.iter.initializer, feed_dict={self.inGrids: inputGrid})
-            # Run the tensor flow overlap graph and get the summary for tensorboard.
-            summary, overlap, colInPotSyn = sess.run([merge,
-                                                      self.pr_mult,
-                                                      self.prevColInputPotSyn],
-                                                     feed_dict={self.colSynPerm: colSynPerm})
 
-            #print("colInPotSyn = \n%s" % colInPotSyn)
-            print("overlap = \n%s" % overlap)
+            for i in range(self.numInputs):
+                print("\nNew overlap calculation")
+                # Run the tensor flow overlap graph and get the summary for tensorboard.
+                summary, overlap, colInPotSyn = sess.run([merge,
+                                                          self.pr_mult,
+                                                          self.prevColInputPotSyn],
+                                                         feed_dict={self.colSynPerm: colSynPerm})
+
+                #print("colInPotSyn = \n%s" % colInPotSyn)
+                print("overlap plus tiebreaker = \n%s" % overlap.reshape((self.columnsWidth, self.columnsHeight)))
+
+            #sess.run(self.iter.initializer, feed_dict={self.inGrids: inputGrid})
+            #print("prevOverlap = \n")
+            #print(sess.run(self.prevOverlap))
+            #print(self.prevColPotOverlaps.eval())
 
             # Write logs at every iteration
             self.summary_writer.add_summary(summary)
@@ -496,10 +509,8 @@ class OverlapCalculator():
                   "--> tensorboard --logdir=/tmp/tensorflow_logs "
                   "\nThen open http://0.0.0.0:6006/ into your web browser")
 
-            print "colOverlapVals = \n%s" % overlap.reshape((self.columnsWidth, self.columnsHeight))
+
         return overlap, colInPotSyn
-
-
 
 
 if __name__ == '__main__':
@@ -516,7 +527,7 @@ if __name__ == '__main__':
     minOverlap = 3
     numPotSyn = potWidth * potHeight
     numColumns = numColumnRows * numColumnCols
-    wrapInput = False
+    wrapInput = True
 
     # Create an array representing the permanences of colums synapses
     colSynPerm = np.random.rand(numColumns, numPotSyn)
@@ -536,10 +547,10 @@ if __name__ == '__main__':
                                     centerPotSynapses,
                                     connectedPerm,
                                     minOverlap,
-                                    wrapInput)
+                                    wrapInput,
+                                    numInputs)
 
-    newInputMat = np.array([np.random.randint(2, size=(numInputRows, numInputCols))])
-
+    newInputMat = np.array(np.random.randint(2, size=(numInputs, numInputRows, numInputCols)))
     print("newInputMat = \n%s" % newInputMat)
 
 

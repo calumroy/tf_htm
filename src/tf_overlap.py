@@ -130,11 +130,12 @@ class OverlapCalculator():
                 # The image must be a 4d tensor for the convole function. Add some extra dimensions.
                 self.image = tf.reshape(self.newGrid, [1, self.inputHeight, self.inputWidth, 1], name='image')
                 # Create the stride for the convolution
-                self.stride = [1, self.stepX, self.stepY, 1]
+                self.stride = [1, self.stepY, self.stepX, 1]
 
                 # Create the padding sizes to use and the padding node.
                 with tf.name_scope('padding'):
-                    [padL, padR, padU, padD] = self.getPaddingSizes()
+                    [padU, padD, padL, padR] = self.getPaddingSizes()
+                    # print("[padL, padR, padU, padD] = %s, %s, %s, %s" % (padL, padR, padU, padD))
                     self.paddings = tf.constant([[0, 0], [padU, padD], [padL, padR], [0, 0]])
                     # set the padding
                     if self.wrapInput is True:
@@ -151,11 +152,19 @@ class OverlapCalculator():
                                                             strides=self.stride,
                                                             rates=[1, 1, 1, 1],
                                                             padding='VALID')
-                # Reshape rates as the output is 3 dimensional and we only require 2 dimesnions
+
+                #print("kernel = \n%s" % self.kernel)
+                #print("stride = \n%s" % self.stride)
+                #print("image = \n%s" % self.image)
+                #print("paddedInput = \n%s" % self.paddedInput)
+                #print("imageNeib4d = \n%s" % self.imageNeib4d)
+
+                # Reshape rates as the output is 3 dimensional and we only require 2 dimensions
                 # A list for each of the htm columns that shows what each columns can potentially connect to.
                 self.imageNeib = tf.reshape(self.imageNeib4d,
-                                            [self.potentialHeight*self.potentialWidth,
-                                             self.numColumns], name='overlapImage')
+                                            [self.numColumns,
+                                             self.potentialHeight*self.potentialWidth],
+                                            name='overlapImage')
 
                 # tf.squeeze Removes dimensions of size 1 from the shape of a tensor.
                 self.colInputPotSyn = tf.squeeze(self.imageNeib)
@@ -166,8 +175,8 @@ class OverlapCalculator():
             # Since the colInputPotSyn contains ones and zeros some tiebreaker values are
             # masked out. This means the tie breaker will be different for each input
             # pattern.
-            # print("colInputPotSyn.shape = %s" % self.colInputPotSyn.shape)
-            # print("potSynTieBreaker.shape = %s,%s" % self.potSynTieBreaker.shape)
+            #print("colInputPotSyn.shape = %s" % self.colInputPotSyn.shape)
+            #print("potSynTieBreaker.shape = %s,%s" % self.potSynTieBreaker.shape)
             self.potSynTieBreakerTf = tf.convert_to_tensor(self.potSynTieBreaker, np.float32, name='potSynTieBreaker')
             self.maskedTieBreaker = tf.multiply(self.colInputPotSyn, self.potSynTieBreakerTf)
             self.colInputPotSynTie = tf.add(self.colInputPotSyn, self.maskedTieBreaker)
@@ -284,7 +293,7 @@ class OverlapCalculator():
         # Create a tiebreaker that changes for each row.
         for j in range(len(tieBreaker)):
             tieBreaker[j] = random.sample(rowsTie, len(rowsTie))
-        # print("self.tieBreaker = \n%s" % self.tieBreaker)
+        #print("tieBreaker = \n%s" % tieBreaker)
 
     def makeColTieBreaker(self, tieBreaker):
         # Make a vector of tiebreaker values to add to the columns overlap values vector.
@@ -384,7 +393,9 @@ class OverlapCalculator():
             leftPos_x = 0
         if rightPos_x < 0:
             rightPos_x = 0
-        # Return the padding sizes
+        # Return the padding sizes.
+        # The topPos_y is how many columns to add to pad above the first row of elements.
+        # The bottomPos_y is how many columns to add to pad below the last row of elements.
         return [topPos_y, bottomPos_y, leftPos_x, rightPos_x]
 
     def addPaddingToInput(self, inputGrid, useZeroPadVal=True):
@@ -488,6 +499,7 @@ class OverlapCalculator():
 
             for i in range(self.numInputs):
                 print("\nNew overlap calculation")
+
                 # Run the tensor flow overlap graph and get the summary for tensorboard.
                 summary, overlap, colInPotSyn = sess.run([merge,
                                                           self.pr_mult,
@@ -527,7 +539,7 @@ if __name__ == '__main__':
     minOverlap = 3
     numPotSyn = potWidth * potHeight
     numColumns = numColumnRows * numColumnCols
-    wrapInput = True
+    wrapInput = False
 
     # Create an array representing the permanences of colums synapses
     colSynPerm = np.random.rand(numColumns, numPotSyn)

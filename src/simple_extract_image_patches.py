@@ -3,6 +3,9 @@ import tensorflow as tf
 n = 10
 # images is a 1 x 10 x 10 x 1 array that contains the numbers 1 through 100 in order
 images = [[[[x * n + y + 1] for y in range(n)] for x in range(n)]]
+# strides defines how far to move between each patch extact
+#     strides = [1, 2, 5, 1] will move in the (columns) y direction by 2 and the rows (x direction) by 5.
+#
 
 print(images)
 # We generate four outputs as follows:
@@ -11,7 +14,10 @@ print(images)
 # 3. 4x4 patches with stride length 7; only one patch should be generated
 # 4. Same as above, but with padding set to 'SAME'
 with tf.Session() as sess:
-  print tf.extract_image_patches(images=images, ksizes=[1, 3, 3, 1], strides=[1, 5, 5, 1], rates=[1, 1, 1, 1], padding='VALID').eval(), '\n\n'
+  #print tf.extract_image_patches(images=images, ksizes=[1, 3, 3, 1], strides=[1, 5, 5, 1], rates=[1, 1, 1, 1], padding='VALID').eval(), '\n\n'
   #print tf.extract_image_patches(images=images, ksizes=[1, 3, 3, 1], strides=[1, 5, 5, 1], rates=[1, 2, 2, 1], padding='VALID').eval(), '\n\n'
   #print tf.extract_image_patches(images=images, ksizes=[1, 4, 4, 1], strides=[1, 7, 7, 1], rates=[1, 1, 1, 1], padding='VALID').eval(), '\n\n'
   #print tf.extract_image_patches(images=images, ksizes=[1, 4, 4, 1], strides=[1, 7, 7, 1], rates=[1, 1, 1, 1], padding='SAME').eval()
+
+  # Testing
+  print tf.extract_image_patches(images=images, ksizes=[1, 3, 3, 1], strides=[1, 2, 5, 1], rates=[1, 1, 1, 1], padding='VALID').eval(), '\n\n'

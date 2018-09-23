@@ -98,6 +98,9 @@ class OverlapCalculator():
         # Create tensorflow variables and functions
         ############################################
 
+        # Resets tensorflow graph
+        tf.reset_default_graph()
+
         # Set the location to store the tensflow logs so we can run tensorboard.
         self.logsPath = '/tmp/tensorflow_logs/example/tf_htm/'
         now = datetime.now()
@@ -153,11 +156,11 @@ class OverlapCalculator():
                                                             rates=[1, 1, 1, 1],
                                                             padding='VALID')
 
-                #print("kernel = \n%s" % self.kernel)
-                #print("stride = \n%s" % self.stride)
-                #print("image = \n%s" % self.image)
-                #print("paddedInput = \n%s" % self.paddedInput)
-                #print("imageNeib4d = \n%s" % self.imageNeib4d)
+                # print("kernel = \n%s" % self.kernel)
+                # print("stride = \n%s" % self.stride)
+                # print("image = \n%s" % self.image)
+                # print("paddedInput = \n%s" % self.paddedInput)
+                # print("imageNeib4d = \n%s" % self.imageNeib4d)
 
                 # Reshape rates as the output is 3 dimensional and we only require 2 dimensions
                 # A list for each of the htm columns that shows what each columns can potentially connect to.
@@ -175,8 +178,8 @@ class OverlapCalculator():
             # Since the colInputPotSyn contains ones and zeros some tiebreaker values are
             # masked out. This means the tie breaker will be different for each input
             # pattern.
-            #print("colInputPotSyn.shape = %s" % self.colInputPotSyn.shape)
-            #print("potSynTieBreaker.shape = %s,%s" % self.potSynTieBreaker.shape)
+            # print("colInputPotSyn.shape = %s" % self.colInputPotSyn.shape)
+            # print("potSynTieBreaker.shape = %s,%s" % self.potSynTieBreaker.shape)
             self.potSynTieBreakerTf = tf.convert_to_tensor(self.potSynTieBreaker, np.float32, name='potSynTieBreaker')
             self.maskedTieBreaker = tf.multiply(self.colInputPotSyn, self.potSynTieBreakerTf)
             self.colInputPotSynTie = tf.add(self.colInputPotSyn, self.maskedTieBreaker)
@@ -202,18 +205,16 @@ class OverlapCalculator():
             # Add a small tiebreaker value to the column overlap scores vector.
             self.colOverlapValsTie = tf.add(self.colOverlapVals, self.colTieBreaker)
 
+        # Set any overlap values that are smaller then the
+        # minOverlap value to zero.
+        with tf.name_scope('removeSmallOverlaps'):
+            self.colOverlapValsTieMin = tf.cast(tf.greater(self.colOverlapValsTie,
+                                                           tf.cast(self.minOverlap, tf.float32)),
+                                                tf.float32)
 
-        # Print the output.
-        with tf.name_scope('print'):
-            # Use a print node in the graph. The first input is the input data to pass to this node,
-            # the second is an array of which nodes in the graph you would like to print
-            # pr_mult = tf.Print(mult_y, [mult_y, newGrid], summarize = 25)
-            self.pr_mult = tf.Print(self.colOverlapValsTie,
-                                    [self.colInputPotSyn, self.colPotOverlaps],
-                                    message="Print", summarize=100)
 
         # Create variables to store certain tensors in our graph.
-        with tf.name_scope('storedVars'):
+        with tf.variable_scope("storedVars1", reuse=tf.AUTO_REUSE):
             # We set these variables as non trainable since we are not using back propagation.
             self.prevColInputPotSyn = tf.get_variable("prevColInputPotSyn",
                                                       shape=self.colInputPotSyn.get_shape().as_list(),
@@ -238,11 +239,27 @@ class OverlapCalculator():
             self.prevColPotOverlaps = self.prevColPotOverlaps.assign(self.colPotOverlaps)
 
             self.prevOverlap = tf.get_variable("prevOverlap",
-                                               shape=self.colOverlapValsTie.get_shape().as_list(),
+                                               shape=self.colOverlapVals.get_shape().as_list(),
                                                dtype=tf.float32,
                                                initializer=tf.zeros_initializer,
                                                trainable=False)
-            self.prevOverlap = self.prevOverlap.assign(self.colOverlapValsTie)
+            self.prevOverlap = self.prevOverlap.assign(self.colOverlapVals)
+
+            self.prevOverlapTieMin = tf.get_variable("prevOverlapTieMin",
+                                                     shape=self.colOverlapValsTieMin.get_shape().as_list(),
+                                                     dtype=tf.float32,
+                                                     initializer=tf.zeros_initializer,
+                                                     trainable=False)
+            self.prevOverlapTieMin = self.prevOverlapTieMin.assign(self.colOverlapValsTieMin)
+
+        # Print the output.
+        with tf.name_scope('print'):
+            # Use a print node in the graph. The first input is the input data to pass to this node,
+            # the second is an array of which nodes in the graph you would like to print
+            # pr_mult = tf.Print(mult_y, [mult_y, newGrid], summarize = 25)
+            self.pr_mult = tf.Print(self.colOverlapValsTieMin,
+                                    [self.colInputPotSyn, self.colPotOverlaps],
+                                    message="Print", summarize=100)
 
         # Create a summary to monitor padded input tensor
         tf.summary.histogram("paddedInput", self.paddedInput)
@@ -344,9 +361,10 @@ class OverlapCalculator():
     def checkNewInputParams(self, newColSynPerm, newInput):
         # Check that the new input has the same dimensions as the
         # originally defined input parameters.
-        #print("self.numInputs = %s len(newInput) = %s" %(self.numInputs, len(newInput)))
+        # print("self.numInputs = %s len(newInput) = %s" %(self.numInputs, len(newInput)))
+        # print("newInput = %s" %newInput)
         assert self.numInputs == len(newInput)
-        #print("self.inputHeight = %s len(newInput[0]) = %s" %(self.inputHeight, len(newInput[0])))
+        # print("self.inputHeight = %s len(newInput[0]) = %s" %(self.inputHeight, len(newInput[0])))
         assert self.inputHeight == len(newInput[0])
         assert self.inputWidth == len(newInput[0][0])
         assert self.potentialWidth * self.potentialHeight == len(newColSynPerm[0])
@@ -421,58 +439,122 @@ class OverlapCalculator():
 
         return inputGrid
 
-    def getColInputs(self, inputGrid):
-        # This function uses a convolution function to
-        # return the inputs that each column potentially connects to.
+    def addTfPad(self, image, wrapInput):
+        # Create the padding sizes to use and the padding node.
+        paddedInput = None
+        with tf.name_scope('pad'):
+            [padU, padD, padL, padR] = self.getPaddingSizes()
+            # print("[padL, padR, padU, padD] = %s, %s, %s, %s" % (padL, padR, padU, padD))
+            padDim = tf.constant([[0, 0], [padU, padD], [padL, padR], [0, 0]])
+            # set the padding
+            if wrapInput is True:
+                # This prevents the edges from being unfairly hindered due to a smaller overlap with the kernel.
+                paddedInput = tf.pad(image, padDim, "REFLECT")
+            else:
+                paddedInput = tf.pad(image, padDim, "CONSTANT")
+        return paddedInput
 
-        # It ouputs a matrix where each row represents the potential pool of inputs
-        # that one column in a layer can connect too.
+    def getPotShape(self):
+        # Return the potential width and height.
+        return self.potentialWidth, self.potentialHeight
+
+    def getPotentialSynapsePos(self, inputWidth, inputHeight):
+        # Creates and runs a new tf graph to return a matrix of index positions
+        # that each column potential synpases connects to in the input.
+
+        # Resets tensorflow graph
+        tf.reset_default_graph()
+
+        # First create a matrix with the same dimensions as
+        # the inputGrid but where each position holds an index.
+        # The index is just a number representing that element in the inputGrid.
+        tempIndexInputGrid = np.array([[i + j*inputWidth for i in range(inputWidth)] for j in range(inputHeight)])
 
         # Take the input and put it into a 4D tensor.
-        inputGrid = np.array([[inputGrid]])
+        # This is because the tensorflow convolution works with 4D tensors only.
+        newShape = np.insert(tempIndexInputGrid.shape, 0, 1)
+        newShape = np.insert(newShape, len(newShape), 1)
+        tempIndexInputGrid = np.reshape(tempIndexInputGrid, newShape)
+        #print("tempIndexInputGrid.shape = \n%s tempIndexInputGrid = \n%s" % (tempIndexInputGrid.shape, tempIndexInputGrid))
 
-        # print("inputGrid.shape = %s,%s,%s,%s" % inputGrid.shape)
-        firstDim, secondDim, width, height = inputGrid.shape
+        # Work out how far each columns pool of inputs should step
+        # so the entire input is covered equally in the convole.
+        self.stepX, self.stepY = self.getStepSizes(inputWidth, inputHeight,
+                                                   self.columnsWidth, self.columnsHeight,
+                                                   self.potentialWidth, self.potentialHeight)
+        # print "self.stepX = %s, self.stepY = %s" % (self.stepX, self.stepY)
+
+        # Start of the tensorflow graph
+        indexInputGrid = tf.placeholder(tf.float32, tempIndexInputGrid.shape, name='indexInputGrid')
 
         # If we are not using the wrap input function then padding will need to be added
         # to the edges.
-        if self.wrapInput == False:
+        if bool(self.wrapInput) is False:
             # work out how much padding is needed on the borders
             # using the defined potential width and potential height.
-            inputGrid = self.addPaddingToInput(inputGrid)
+            # We want the padding places to have a -1 value indicating
+            # that this is not a valid index.
+            with tf.name_scope('negativePad'):
+                indexInputGridAdd = tf.add(indexInputGrid, 1)
+                indexInputGridZeroPad = self.addTfPad(indexInputGridAdd, self.wrapInput)
+                indexInputGridPad = tf.add(indexInputGridZeroPad, -1)
 
-        # print("padded InputGrid = \n%s" % inputGrid)
-        # print("inputGrid.shape = %s,%s,%s,%s" % inputGrid.shape)
-        # print("self.potentialWidth = %s" % self.potentialWidth)
-        # print("self.potentialHeight = %s" % self.potentialHeight)
-        # print("self.stepX = %s, self.stepY = %s" % (self.stepX, self.stepY))
+        # print "padded InputGrid = \n%s" % indexInputGrid
+        # print "padded InputGrid.shape = %s,%s,%s,%s" % indexInputGrid.shape
+        # print "self.potentialWidth = %s" % self.potentialWidth
+        # print "self.potentialHeight = %s" % self.potentialHeight
+        # print "self.stepX = %s, self.stepY = %s" % (self.stepX, self.stepY)
+        # print "inputWidth = %s, inputHeight = %s" % (inputWidth, inputHeight)
         # Calculate the inputs to each column.
-        if self.wrapInput == True:
-            # Wrap the input grid to create the potential pool for each column.
-            inputConPotSyn = self.pool_inputs_wrap(inputGrid)
-            # Since we are wrapping and no padding was added to the input then
-            # the inputConPotSyn could have more potential pool groups then the
-            # number of columns in the layer. Delete the last rows of the inputConPotSyn.
-            if len(inputConPotSyn) > self.numColumns:
-                diff = len(inputConPotSyn) - self.numColumns
-                num_pools = len(inputConPotSyn)
-                inputConPotSyn = np.delete(inputConPotSyn, range(num_pools-diff,num_pools), axis=0)
+        #import ipdb; ipdb.set_trace()
         else:
-            # Don't wrap the input. The columns on the edges have a smaller potential input pool.
-            inputConPotSyn = self.pool_inputs(inputGrid)
-        # The returned array is within a list so just use pos 0.
-        # print("inputConPotSyn = \n%s" % inputConPotSyn)
-        # print("inputConPotSyn.shape = %s,%s" % inputConPotSyn.shape)
-        return inputConPotSyn
+            # Wrap the input grid to create the potential pool for each column.
+            with tf.name_scope('wrapPad'):
+                indexInputGridPad = self.addTfPad(indexInputGrid, self.wrapInput)
 
+        with tf.name_scope('getPotIndexPos'):
+            # From the padded input for each HTM column get a list of the potential inputs that column can connect to.
+            # Rates can be used to set how many pixels between each slected pixel are skipped.
+            # A variable to store the kernal used to workout the potential pool for each column
+            # The kernal must be a 4d tensor.
+            kernel = [1, self.potentialHeight, self.potentialWidth, 1]
+            # Create the stride for the convolution
+            stride = [1, self.stepY, self.stepX, 1]
+            imagePotind = tf.extract_image_patches(images=indexInputGridPad,
+                                                   ksizes=kernel,
+                                                   strides=stride,
+                                                   rates=[1, 1, 1, 1],
+                                                   padding='VALID')
+            # tf.squeeze Removes dimensions of size 1 from the shape of a tensor.
+            inputPotSynIndex = tf.squeeze(imagePotind)
 
+        # Create variables to store certain tensors in our graph.
+        with tf.name_scope('storedVars'):
+            # We set these variables as non trainable since we are not using back propagation.
+            prevInputPotSynIndex = tf.get_variable("prevInputPotSynIndex",
+                                                   shape=inputPotSynIndex.get_shape().as_list(),
+                                                   dtype=tf.float32,
+                                                   initializer=tf.zeros_initializer,
+                                                   trainable=False)
+            prevInputPotSynIndex = prevInputPotSynIndex.assign(tf.cast(inputPotSynIndex, tf.float32))
 
+        # Run the tf graph
+        with tf.Session() as sess:
+            potInd = sess.run([prevInputPotSynIndex],
+                              feed_dict={indexInputGrid: tempIndexInputGrid})
+            # print("potInd = \n%s" % potInd)
 
+            # Now turn the inputPotSynIndex into a matrix holding the X and Y indicies
+            # for the element in the inpuGrid that a potential synapse connects to.
+            potIndRes = potInd[0]
+            potSynXYIndex = (np.floor_divide(potIndRes, inputWidth),
+                             np.remainder(potIndRes, inputWidth))
+            # print("potSynXYIndex X = \n")
+            # print(potSynXYIndex[0])
+            # print("potSynXYIndex Y = \n")
+            # print(potSynXYIndex[1])
 
-
-
-
-
+        return potSynXYIndex
 
     def calculateOverlap(self, colSynPerm, inputGrid):
 
@@ -481,12 +563,12 @@ class OverlapCalculator():
         self.checkNewInputParams(colSynPerm, inputGrid)
 
         # Calculate the inputs to each column
-        # import ipdb; ipdb.set_trace()
+        #import ipdb; ipdb.set_trace()
         # self.colInputPotSyn = self.getColInputs(inputGrid)
 
         # Calculate the inputs to each column
 
-        # Start training
+        # Run the Graph
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
 
@@ -506,13 +588,7 @@ class OverlapCalculator():
                                                           self.prevColInputPotSyn],
                                                          feed_dict={self.colSynPerm: colSynPerm})
 
-                #print("colInPotSyn = \n%s" % colInPotSyn)
                 print("overlap plus tiebreaker = \n%s" % overlap.reshape((self.columnsWidth, self.columnsHeight)))
-
-            #sess.run(self.iter.initializer, feed_dict={self.inGrids: inputGrid})
-            #print("prevOverlap = \n")
-            #print(sess.run(self.prevOverlap))
-            #print(self.prevColPotOverlaps.eval())
 
             # Write logs at every iteration
             self.summary_writer.add_summary(summary)
@@ -543,6 +619,8 @@ if __name__ == '__main__':
 
     # Create an array representing the permanences of colums synapses
     colSynPerm = np.random.rand(numColumns, numPotSyn)
+    # colSynPerm = np.zeros((numColumns, numPotSyn))
+    # colSynPerm = np.add(colSynPerm,1)
     # Print the synapses where the synapse is connected
     # print("colSynPerm = \n%s" % colSynPerm)
     conColSynPerm = np.array(np.where(colSynPerm > connectedPerm, 1, 0))

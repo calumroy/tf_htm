@@ -208,10 +208,11 @@ class OverlapCalculator():
         # Set any overlap values that are smaller then the
         # minOverlap value to zero.
         with tf.name_scope('removeSmallOverlaps'):
-            self.colOverlapValsTieMin = tf.cast(tf.greater(self.colOverlapValsTie,
-                                                           tf.cast(self.minOverlap, tf.float32)),
-                                                tf.float32)
-
+            self.colOverlapValsTieMin = tf.multiply(
+                                                    tf.cast(tf.greater(self.colOverlapValsTie,
+                                                            tf.cast(self.minOverlap, tf.float32)),
+                                                            tf.float32),
+                                                    self.colOverlapValsTie)
 
         # Create variables to store certain tensors in our graph.
         with tf.variable_scope("storedVars1", reuse=tf.AUTO_REUSE):
@@ -258,8 +259,8 @@ class OverlapCalculator():
             # the second is an array of which nodes in the graph you would like to print
             # pr_mult = tf.Print(mult_y, [mult_y, newGrid], summarize = 25)
             self.pr_mult = tf.Print(self.colOverlapValsTieMin,
-                                    [self.colInputPotSyn, self.colPotOverlaps],
-                                    message="Print", summarize=100)
+                                    [self.colInputPotSyn, self.colPotOverlaps, self.colOverlapValsTieMin],
+                                    message="Print", summarize=200)
 
         # Create a summary to monitor padded input tensor
         tf.summary.histogram("paddedInput", self.paddedInput)
@@ -538,10 +539,21 @@ class OverlapCalculator():
                                                    trainable=False)
             prevInputPotSynIndex = prevInputPotSynIndex.assign(tf.cast(inputPotSynIndex, tf.float32))
 
+        with tf.name_scope('summary'):
+            indexInputGridPadImage = tf.to_float(indexInputGridPad)
+            tf.summary.image("indexInputGridPadImage", indexInputGridPadImage)
+
+        # op to write logs to Tensorboard
+        summary_writer = tf.summary.FileWriter(self.logsPath, graph=tf.get_default_graph())
+
         # Run the tf graph
         with tf.Session() as sess:
-            potInd = sess.run([prevInputPotSynIndex],
-                              feed_dict={indexInputGrid: tempIndexInputGrid})
+            sess.run(tf.global_variables_initializer())
+            # Merge all the summaries into one tensorflow operation
+            merge = tf.summary.merge_all()
+
+            summary, potInd = sess.run([merge, prevInputPotSynIndex],
+                                       feed_dict={indexInputGrid: tempIndexInputGrid})
             # print("potInd = \n%s" % potInd)
 
             # Now turn the inputPotSynIndex into a matrix holding the X and Y indicies
@@ -553,6 +565,8 @@ class OverlapCalculator():
             # print(potSynXYIndex[0])
             # print("potSynXYIndex Y = \n")
             # print(potSynXYIndex[1])
+            # Write logs at every iteration
+            summary_writer.add_summary(summary)
 
         return potSynXYIndex
 
@@ -590,8 +604,8 @@ class OverlapCalculator():
 
                 print("overlap plus tiebreaker = \n%s" % overlap.reshape((self.columnsWidth, self.columnsHeight)))
 
-            # Write logs at every iteration
-            self.summary_writer.add_summary(summary)
+                # Write logs at every iteration
+                self.summary_writer.add_summary(summary)
 
             print("\nRun the command line:\n"
                   "--> tensorboard --logdir=/tmp/tensorflow_logs "
@@ -612,7 +626,7 @@ if __name__ == '__main__':
     numColumnCols = 3
     numInputs = 1
     connectedPerm = 0.3
-    minOverlap = 3
+    minOverlap = 2
     numPotSyn = potWidth * potHeight
     numColumns = numColumnRows * numColumnCols
     wrapInput = False

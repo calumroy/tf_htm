@@ -3,7 +3,7 @@ import numpy as np
 from htm_calc import tf_overlap
 
 
-class test_theanoOverlap:
+class test_tfOverlap:
     def setUp(self):
         '''
         The theano overlap class is tested with a range of
@@ -12,39 +12,47 @@ class test_theanoOverlap:
          * HTM column sizes
 
         '''
-    # def test_getPotentialSynapsePos(self):
-    #     '''
-    #     Test the teensorflow overlap calculators getPotentialSynapsePos
-    #     function.
-    #     '''
-    #     potWidth = 3
-    #     potHeight = 3
-    #     centerPotSynapses = 1
-    #     numColumnRows = 2
-    #     numColumnCols = 2
-    #     connectedPerm = 0.3
-    #     minOverlap = 3
-    #     wrapInput = 0
+    def test_getPotentialSynapsePos(self):
+        '''
+        Test the teensorflow overlap calculators getPotentialSynapsePos
+        function.
+        '''
+        potWidth = 3
+        potHeight = 3
+        centerPotSynapses = 1
+        numColumnRows = 2
+        numColumnCols = 2
+        connectedPerm = 0.3
+        minOverlap = 3
+        wrapInput = 0
 
-    #     numInputRows = 3
-    #     numInputCols = 3
+        numInputRows = 3
+        numInputCols = 3
+        numInputs = 1
+        numPotSyn = potWidth * potHeight
+        numColumns = numColumnRows * numColumnCols
 
-    #     # Create an instance of the overlap calculation class
-    #     overlapCalc = tf_overlap.OverlapCalculator(potWidth,
-    #                                                potHeight,
-    #                                                numColumnCols,
-    #                                                numColumnRows,
-    #                                                numInputCols,
-    #                                                numInputRows,
-    #                                                centerPotSynapses,
-    #                                                connectedPerm,
-    #                                                minOverlap,
-    #                                                wrapInput)
+        newInputMat = np.random.randint(2, size=(numInputs, numInputRows, numInputCols))
+        # Create an array representing the permanences of colums synapses
+        colSynPerm = np.random.rand(numColumns, numPotSyn)
 
-    #     #import ipdb; ipdb.set_trace()
-    #     columnPotSynPositions = overlapCalc.getPotentialSynapsePos(numInputCols, numInputRows)
+        # Create an instance of the overlap calculation class
+        overlapCalc = tf_overlap.OverlapCalculator(potWidth,
+                                                   potHeight,
+                                                   numColumnCols,
+                                                   numColumnRows,
+                                                   numInputCols,
+                                                   numInputRows,
+                                                   centerPotSynapses,
+                                                   connectedPerm,
+                                                   minOverlap,
+                                                   wrapInput)
 
-    #     #print("columnPotSynPositions = \n", columnPotSynPositions)
+        #import ipdb; ipdb.set_trace()
+        columnPotSynPositions = overlapCalc.getPotentialSynapsePos(numInputCols, numInputRows)
+        colOverlaps, colPotInputs = overlapCalc.calculateOverlap(colSynPerm, newInputMat)
+
+        print("columnPotSynPositions = \n", columnPotSynPositions)
 
     def test_inputSizes(self):
         '''
@@ -94,66 +102,63 @@ class test_theanoOverlap:
 
                 assert len(colOverlaps) == numColumns
 
-    # def test_minOverlap(self):
-    #     '''
-    #     Test the theano overlap calculator with a case where their is no
-    #     columns with an overlap value larger then the min overlap value.
-    #     '''
-    #     potWidth = 2
-    #     potHeight = 2
-    #     centerPotSynapses = 1
-    #     numColumnRows = 4
-    #     numColumnCols = 4
-    #     connectedPerm = 0.3
-    #     minOverlap = 3
-    #     wrapInput = 0
+    def test_minOverlap(self):
+        '''
+        Test the tf overlap calculator with a case where their is no
+        columns with an overlap value larger then the min overlap value.
+        '''
+        potWidth = 2
+        potHeight = 2
+        centerPotSynapses = 1
+        numColumnRows = 4
+        numColumnCols = 4
+        connectedPerm = 0.3
+        minOverlap = 3
+        wrapInput = 0
 
-    #     colSynPerm = np.array([[0, 0, 0, 0],
-    #                            [0, 0, 0, 0],
-    #                            [0, 0, 0, 0],
-    #                            [0, 0, 0, 0],
-    #                            [0, 0, 0, 0],
-    #                            [0, 0, 0, 0],
-    #                            [0, 0, 0, 0],
-    #                            [0, 0, 0, 0],
-    #                            [1, 1, 1, 1],
-    #                            [1, 1, 1, 1],
-    #                            [1, 1, 1, 1],
-    #                            [1, 1, 1, 1],
-    #                            [0, 0, 0, 0],
-    #                            [0, 0, 0, 0],
-    #                            [0, 0, 0, 0],
-    #                            [0, 0, 0, 0]])
+        colSynPerm = np.array([[0, 0, 0, 0],
+                               [0, 0, 0, 0],
+                               [0, 0, 0, 0],
+                               [0, 0, 0, 0],
+                               [0, 0, 0, 0],
+                               [0, 0, 0, 0],
+                               [0, 0, 0, 0],
+                               [0, 0, 0, 0],
+                               [1, 1, 1, 1],
+                               [1, 1, 1, 1],
+                               [1, 1, 1, 1],
+                               [1, 1, 1, 1],
+                               [0, 0, 0, 0],
+                               [0, 0, 0, 0],
+                               [0, 0, 0, 0],
+                               [0, 0, 0, 0]])
 
-    #     newInputMat = np.array([[1, 1, 1, 1],
-    #                             [0, 0, 0, 0],
-    #                             [1, 1, 1, 1],
-    #                             [0, 0, 0, 0]])
+        newInputMat = np.array([[[1, 1, 1, 1],
+                                [0, 0, 0, 0],
+                                [1, 1, 1, 1],
+                                [0, 0, 0, 0]]])
 
-    #     numInputCols = 4
-    #     numInputRows = 4
+        numInputCols = 4
+        numInputRows = 4
 
-    #     # Create an instance of the overlap calculation class
-    #     overlapCalc = tf_overlap.OverlapCalculator(potWidth,
-    #                                                potHeight,
-    #                                                numColumnCols,
-    #                                                numColumnRows,
-    #                                                numInputCols,
-    #                                                numInputRows,
-    #                                                centerPotSynapses,
-    #                                                connectedPerm,
-    #                                                minOverlap,
-    #                                                wrapInput)
+        # Create an instance of the overlap calculation class
+        overlapCalc = tf_overlap.OverlapCalculator(potWidth,
+                                                   potHeight,
+                                                   numColumnCols,
+                                                   numColumnRows,
+                                                   numInputCols,
+                                                   numInputRows,
+                                                   centerPotSynapses,
+                                                   connectedPerm,
+                                                   minOverlap,
+                                                   wrapInput)
 
-    #     # Return both the overlap values and the inputs from
-    #     # the potential synapses to all columns.
-    #     colOverlaps, colPotInputs = overlapCalc.calculateOverlap(colSynPerm, newInputMat)
+        # Return both the overlap values and the inputs from
+        # the potential synapses to all columns.
+        colOverlaps, colPotInputs = overlapCalc.calculateOverlap(colSynPerm, newInputMat)
 
-    #     # limit the overlap values so they are larger then minOverlap
-    #     colOverlaps = overlapCalc.removeSmallOverlaps(colOverlaps)
-
-    #     #import ipdb; ipdb.set_trace()
-    #     assert np.sum(colOverlaps) == 0
+        #import ipdb; ipdb.set_trace()
+        assert np.sum(colOverlaps) == 0
 
     # def test_uncenteredCase1(self):
     #     '''

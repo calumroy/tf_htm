@@ -506,20 +506,19 @@ class OverlapCalculator():
             for i in range(self.numInputs):
 
                 summary, potInd = sess.run([merge, self.colInputPotSyn])
-                                           #feed_dict={self.colSynPerm: colSynPerm})
 
             # Now turn the inputPotSynIndex into a matrix holding the X and Y indicies
             # for the element in the inpuGrid that a potential synapse connects to.
             # First minus one so all the padded elements get a value of minus one and are easily identifiable.
             potIndRes = potInd-1
-            print("potIndRes = \n%s" % potIndRes)
+            # print("potIndRes = \n%s" % potIndRes)
             potSynXYIndex = (np.floor_divide(potIndRes, inputWidth),
                              np.remainder(potIndRes, inputWidth))
-            print("potSynXYIndex X = \n")
-            print(potSynXYIndex[0])
-            print("potSynXYIndex Y = \n")
-            print(potSynXYIndex[1])
-            #Write logs at every iteration
+            # print("potSynXYIndex X = \n")
+            # print(potSynXYIndex[0])
+            # print("potSynXYIndex Y = \n")
+            # print(potSynXYIndex[1])
+            # Write logs at every iteration
             self.summary_writer.add_summary(summary)
 
         return potSynXYIndex

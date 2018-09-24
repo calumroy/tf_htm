@@ -282,23 +282,28 @@ class OverlapCalculator():
         # First create a matrix with the same dimensions as
         # the inputGrid but where each position holds an index.
         # The index is just a number representing that element in the inputGrid.
-        self.tempIndexInputGrid = np.array([[i + j*inputWidth for i in range(inputWidth)] for j in range(inputHeight)])
+        # Start the index at one not zero. This is so later we can minus one so all
+        # the padding elements will have a value of -1 and are easily identifiable.
+        self.tempIndexInputGrid = np.array([[[1+i + j*inputWidth for i in range(inputWidth)]
+                                            for j in range(inputHeight)]
+                                            for k in range(numInputs)], dtype=float)
 
-        # Take the input and put it into a 4D tensor.
-        # This is because the tensorflow convolution works with 4D tensors only.
-        newShape = np.insert(self.tempIndexInputGrid.shape, 0, 1)
-        newShape = np.insert(newShape, len(newShape), 1)
-        self.tempIndexInputGrid = np.reshape(self.tempIndexInputGrid, newShape)
-        #print("self.tempIndexInputGrid.shape = \n%s self.tempIndexInputGrid = \n%s" % (self.tempIndexInputGrid.shape, self.tempIndexInputGrid))
-        self.indexInputGrid = None
-        self.indexInputGridAdd = None
-        self.indexInputGridZeroPad = None
-        self.indexInputGridPad = None
-        self.imagePotind = None
-        self.inputPotSynIndex = None
-        self.prevInputPotSynIndex = None
-        self.indexInputGridPadImage = None
-        self.createGetPotSynPosGraph()
+
+        # # Take the input and put it into a 4D tensor.
+        # # This is because the tensorflow convolution works with 4D tensors only.
+        # newShape = np.insert(self.tempIndexInputGrid.shape, 0, 1)
+        # newShape = np.insert(newShape, len(newShape), 1)
+        # self.tempIndexInputGrid = np.reshape(self.tempIndexInputGrid, newShape)
+        print("self.tempIndexInputGrid.shape = \n%s self.tempIndexInputGrid = \n%s" % (self.tempIndexInputGrid.shape, self.tempIndexInputGrid))
+        # self.indexInputGrid = None
+        # self.indexInputGridAdd = None
+        # self.indexInputGridZeroPad = None
+        # self.indexInputGridPad = None
+        # self.imagePotind = None
+        # self.inputPotSynIndex = None
+        # self.prevInputPotSynIndex = None
+        # self.indexInputGridPadImage = None
+        #self.createGetPotSynPosGraph()
 
     def makePotSynTieBreaker(self, tieBreaker):
         # create a tie breaker matrix holding small values for each element in
@@ -483,101 +488,38 @@ class OverlapCalculator():
         # Return the potential width and height.
         return self.potentialWidth, self.potentialHeight
 
-    def createGetPotSynPosGraph(self):
-        # Start of the tensorflow graph
-        self.indexInputGrid = tf.placeholder(tf.float32, self.tempIndexInputGrid.shape, name='indexInputGrid')
-
-        # If we are not using the wrap input function then padding will need to be added
-        # to the edges.
-        if bool(self.wrapInput) is False:
-            # work out how much padding is needed on the borders
-            # using the defined potential width and potential height.
-            # We want the padding places to have a -1 value indicating
-            # that this is not a valid index.
-            with tf.name_scope('negativePad'):
-                self.indexInputGridAdd = tf.add(self.indexInputGrid, 1)
-                self.indexInputGridZeroPad = self.addTfPad(self.indexInputGridAdd, self.wrapInput)
-                self.indexInputGridPad = tf.add(self.indexInputGridZeroPad, -1)
-
-        # print "padded InputGrid = \n%s" % indexInputGrid
-        # print "padded InputGrid.shape = %s,%s,%s,%s" % indexInputGrid.shape
-        # print "self.potentialWidth = %s" % self.potentialWidth
-        # print "self.potentialHeight = %s" % self.potentialHeight
-        # print "self.stepX = %s, self.stepY = %s" % (self.stepX, self.stepY)
-        # print "inputWidth = %s, inputHeight = %s" % (inputWidth, inputHeight)
-        # Calculate the inputs to each column.
-        #import ipdb; ipdb.set_trace()
-        else:
-            # Wrap the input grid to create the potential pool for each column.
-            with tf.name_scope('wrapPad'):
-                self.indexInputGridPad = self.addTfPad(self.indexInputGrid, self.wrapInput)
-
-        with tf.name_scope('getPotIndexPos'):
-            # From the padded input for each HTM column get a list of the potential inputs that column can connect to.
-            # Rates can be used to set how many pixels between each slected pixel are skipped.
-            # A variable to store the kernal used to workout the potential pool for each column
-            # The kernal must be a 4d tensor.
-            kernel = [1, self.potentialHeight, self.potentialWidth, 1]
-            # Create the stride for the convolution
-            stride = [1, self.stepY, self.stepX, 1]
-            self.imagePotind = tf.extract_image_patches(images=self.indexInputGridPad,
-                                                        ksizes=kernel,
-                                                        strides=stride,
-                                                        rates=[1, 1, 1, 1],
-                                                        padding='VALID')
-            # tf.squeeze Removes dimensions of size 1 from the shape of a tensor.
-            self.inputPotSynIndex = tf.squeeze(self.imagePotind)
-
-        # Create variables to store certain tensors in our graph.
-        with tf.name_scope('storedVars'):
-            # We set these variables as non trainable since we are not using back propagation.
-            self.prevInputPotSynIndex = tf.get_variable("prevInputPotSynIndex",
-                                                        shape=self.inputPotSynIndex.get_shape().as_list(),
-                                                        dtype=tf.float32,
-                                                        initializer=tf.zeros_initializer,
-                                                        trainable=False)
-            self.prevInputPotSynIndex = self.prevInputPotSynIndex.assign(tf.cast(self.inputPotSynIndex, tf.float32))
-
-        with tf.name_scope('summary'):
-            self.indexInputGridPadImage = tf.to_float(self.indexInputGridPad)
-            tf.summary.image("indexInputGridPadImage", self.indexInputGridPadImage)
-
-        # op to write logs to Tensorboard
-        self.summary_writer = tf.summary.FileWriter(self.logsPath, graph=tf.get_default_graph())
-
     def getPotentialSynapsePos(self, inputWidth, inputHeight):
         # Creates and runs a new tf graph to return a matrix of index positions
         # that each column potential synpases connects to in the input.
 
-        # Work out how far each columns pool of inputs should step
-        # so the entire input is covered equally in the convole.
-        self.stepX, self.stepY = self.getStepSizes(inputWidth, inputHeight,
-                                                   self.columnsWidth, self.columnsHeight,
-                                                   self.potentialWidth, self.potentialHeight)
-        # print "self.stepX = %s, self.stepY = %s" % (self.stepX, self.stepY)
-
         # Run the tf graph
         with tf.Session() as sess:
-            sess.run(self.iter.initializer)
             sess.run(tf.global_variables_initializer())
+
             # Merge all the summaries into one tensorflow operation
             merge = tf.summary.merge_all()
 
-            summary, potInd = sess.run([merge, self.prevInputPotSynIndex],
-                                       feed_dict={self.indexInputGrid: self.tempIndexInputGrid,
-                                                  self.inGrids: self.tempIndexInputGrid})
-            # print("potInd = \n%s" % potInd)
+            # feed the placeholder with data. This puts the next input into our graph.
+            # The feed_dict is a dictionary holding the placeholders with the real data
+            sess.run(self.iter.initializer, feed_dict={self.inGrids: self.tempIndexInputGrid})
+
+            for i in range(self.numInputs):
+
+                summary, potInd = sess.run([merge, self.colInputPotSyn])
+                                           #feed_dict={self.colSynPerm: colSynPerm})
 
             # Now turn the inputPotSynIndex into a matrix holding the X and Y indicies
             # for the element in the inpuGrid that a potential synapse connects to.
-            potIndRes = potInd[0]
+            # First minus one so all the padded elements get a value of minus one and are easily identifiable.
+            potIndRes = potInd-1
+            print("potIndRes = \n%s" % potIndRes)
             potSynXYIndex = (np.floor_divide(potIndRes, inputWidth),
                              np.remainder(potIndRes, inputWidth))
-            # print("potSynXYIndex X = \n")
-            # print(potSynXYIndex[0])
-            # print("potSynXYIndex Y = \n")
-            # print(potSynXYIndex[1])
-            # Write logs at every iteration
+            print("potSynXYIndex X = \n")
+            print(potSynXYIndex[0])
+            print("potSynXYIndex Y = \n")
+            print(potSynXYIndex[1])
+            #Write logs at every iteration
             self.summary_writer.add_summary(summary)
 
         return potSynXYIndex

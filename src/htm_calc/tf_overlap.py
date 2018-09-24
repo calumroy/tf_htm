@@ -277,7 +277,7 @@ class OverlapCalculator():
         self.summary_writer = tf.summary.FileWriter(self.logsPath, graph=tf.get_default_graph())
 
         ###################################################################
-        # Create the graph to calculate the indicies that the potential Synapses connect to.
+        # Create the input to calculate the indicies that the potential Synapses connect to.
         ###################################################################
         # First create a matrix with the same dimensions as
         # the inputGrid but where each position holds an index.
@@ -287,23 +287,6 @@ class OverlapCalculator():
         self.tempIndexInputGrid = np.array([[[1+i + j*inputWidth for i in range(inputWidth)]
                                             for j in range(inputHeight)]
                                             for k in range(numInputs)], dtype=float)
-
-
-        # # Take the input and put it into a 4D tensor.
-        # # This is because the tensorflow convolution works with 4D tensors only.
-        # newShape = np.insert(self.tempIndexInputGrid.shape, 0, 1)
-        # newShape = np.insert(newShape, len(newShape), 1)
-        # self.tempIndexInputGrid = np.reshape(self.tempIndexInputGrid, newShape)
-        print("self.tempIndexInputGrid.shape = \n%s self.tempIndexInputGrid = \n%s" % (self.tempIndexInputGrid.shape, self.tempIndexInputGrid))
-        # self.indexInputGrid = None
-        # self.indexInputGridAdd = None
-        # self.indexInputGridZeroPad = None
-        # self.indexInputGridPad = None
-        # self.imagePotind = None
-        # self.inputPotSynIndex = None
-        # self.prevInputPotSynIndex = None
-        # self.indexInputGridPadImage = None
-        #self.createGetPotSynPosGraph()
 
     def makePotSynTieBreaker(self, tieBreaker):
         # create a tie breaker matrix holding small values for each element in
@@ -324,10 +307,9 @@ class OverlapCalculator():
         # less then 0.5 but more then 0.0.
         n = float(inputWidth)
         normValue = float(0.5/(n*(n+1.0)/2.0))
-        #normValue = 1.0/float(2*inputWidth+2)
-        print("maxNormValue = %s" % (n*(n+1.0)/2.0))
-        print("normValue = %s" % normValue)
-        print("tie Width = %s" % inputWidth)
+        # print("maxNormValue = %s" % (n*(n+1.0)/2.0))
+        # print("normValue = %s" % normValue)
+        # print("tie Width = %s" % inputWidth)
 
         rowsTie = np.arange(inputWidth)+1
         rowsTie = rowsTie*normValue
@@ -380,12 +362,23 @@ class OverlapCalculator():
             # Calculate how many of the input elements cannot be covered with the current stepX value.
             uncoveredX = (inputWidth - (potWidth + (colWidth - 1) * stepX))
             # Use this to update the stepX value so all input elements are covered.
-            stepX = stepX + int(math.ceil(float(uncoveredX) / float(colWidth-1)))
+            if colWidth > 1:
+                stepX = stepX + int(math.ceil(float(uncoveredX) / float(colWidth-1)))
+            else:
+                stepX = stepX + int(math.ceil(float(uncoveredX)))
 
         if potHeight + (colHeight-1)*stepY < self.inputHeight:
             uncoveredY = (inputHeight - (potHeight + (colHeight - 1) * stepY))
-            stepY = stepY + int(math.ceil(float(uncoveredY) / float(colHeight-1)))
-
+            if colHeight > 1:
+                stepY = stepY + int(math.ceil(float(uncoveredY) / float(colHeight-1)))
+            else:
+                stepY = stepY + int(math.ceil(float(uncoveredY)))
+        # Limit the step sizes to a minimum of 1
+        if stepX < 1:
+            stepX = 1
+        if stepY < 1:
+            stepY = 1
+        print("stepX = %s, stepY = %s" %(stepX, stepY))
         return stepX, stepY
 
     def checkNewInputParams(self, newColSynPerm, newInput):

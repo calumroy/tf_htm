@@ -12,6 +12,48 @@ class test_tfOverlap:
          * HTM column sizes
 
         '''
+    def test_smallNumCol(self):
+        '''
+        Test the tensorflow overlap calculator when there is very few columns.
+        '''
+        potWidth = 2
+        potHeight = 2
+        centerPotSynapses = 1
+        numColumnRows = 5
+        numColumnCols = 5
+        connectedPerm = 0.3
+        minOverlap = 0
+        wrapInput = 0
+
+        numInputRows = 2
+        numInputCols = 2
+        numInputs = 1
+        numPotSyn = potWidth * potHeight
+        numColumns = numColumnRows * numColumnCols
+
+        newInputMat = np.random.randint(2, size=(numInputs, numInputRows, numInputCols))
+        print("newInputMat = \n%s" % newInputMat)
+        # Create an array representing the permanences of colums synapses
+        colSynPerm = np.ones((numColumns, numPotSyn))
+
+        # Create an instance of the overlap calculation class
+        overlapCalc = tf_overlap.OverlapCalculator(potWidth,
+                                                   potHeight,
+                                                   numColumnCols,
+                                                   numColumnRows,
+                                                   numInputCols,
+                                                   numInputRows,
+                                                   centerPotSynapses,
+                                                   connectedPerm,
+                                                   minOverlap,
+                                                   wrapInput)
+
+        #import ipdb; ipdb.set_trace()
+        #columnPotSynPositions = overlapCalc.getPotentialSynapsePos(numInputCols, numInputRows)
+        colOverlaps, colPotInputs = overlapCalc.calculateOverlap(colSynPerm, newInputMat)
+        print("colOverlaps = \n", colOverlaps)
+        #print("columnPotSynPositions = \n", columnPotSynPositions)
+
     def test_getPotentialSynapsePos(self):
         '''
         Test the teensorflow overlap calculators getPotentialSynapsePos
@@ -74,7 +116,6 @@ class test_tfOverlap:
                            [1., 2., 2., 1., 2., 2., 2., 2., 2.]]))
 
         np.array_equal(columnPotSynPositions, result)
-
 
     def test_inputSizes(self):
         '''

@@ -95,6 +95,7 @@ class OverlapCalculator():
         self.colTieBreaker = np.array([0.0 for i in range(self.numColumns)])
         self.makeColTieBreaker(self.colTieBreaker)
 
+        ############################################
         # Create tensorflow variables and functions
         ############################################
 
@@ -105,176 +106,177 @@ class OverlapCalculator():
         self.logsPath = '/tmp/tensorflow_logs/example/tf_htm/'
         now = datetime.now()
         self.logsPath = self.logsPath + now.strftime("%Y%m%d-%H%M%S") + "/"
+        with tf.name_scope('tf_overlap'):
 
-        with tf.name_scope('inputs'):
-            # A tensor representing the permanences of column synapses
-            self.colSynPerm = tf.placeholder(tf.float32, [self.numColumns, self.numPotSyn], name='colSynPerm')
-            # A variable to hold a tensor storing possibly multiple new input tensors (grids).
-            self.inGrids = tf.placeholder(tf.float32, [self.numInputs, self.inputHeight, self.inputWidth], name='InputGrids')
-            # variable to store just one new input tensor (one grid).
-            self.newGrid = tf.placeholder(tf.float32, [1, self.inputHeight, self.inputWidth], name='NewGrid')
-            # Using a placeholder create a dataset to store the new inputs in
-            dataset = tf.data.Dataset.from_tensor_slices(self.inGrids)
-            # Create an iterator to iterate through our dataset.
-            self.iter = dataset.make_initializable_iterator()
-            # Make the newGrid get just one grid from the dataset
-            self.newGrid = self.iter.get_next()
-            # A tensor full of zeros
-            self.zerosMat = tf.zeros([self.potentialHeight*self.potentialWidth, self.numColumns], name='zerosMat')
+            with tf.name_scope('inputs'):
+                # A tensor representing the permanences of column synapses
+                self.colSynPerm = tf.placeholder(tf.float32, [self.numColumns, self.numPotSyn], name='colSynPerm')
+                # A variable to hold a tensor storing possibly multiple new input tensors (grids).
+                self.inGrids = tf.placeholder(tf.float32, [self.numInputs, self.inputHeight, self.inputWidth], name='InputGrids')
+                # variable to store just one new input tensor (one grid).
+                self.newGrid = tf.placeholder(tf.float32, [1, self.inputHeight, self.inputWidth], name='NewGrid')
+                # Using a placeholder create a dataset to store the new inputs in
+                dataset = tf.data.Dataset.from_tensor_slices(self.inGrids)
+                # Create an iterator to iterate through our dataset.
+                self.iter = dataset.make_initializable_iterator()
+                # Make the newGrid get just one grid from the dataset
+                self.newGrid = self.iter.get_next()
+                # A tensor full of zeros
+                self.zerosMat = tf.zeros([self.potentialHeight*self.potentialWidth, self.numColumns], name='zerosMat')
 
-        # Create the potential pool of inputs each column in the HTM could conenct to.
-        with tf.name_scope('getColInputs'):
+            # Create the potential pool of inputs each column in the HTM could conenct to.
+            with tf.name_scope('getColInputs'):
 
-            # Create the variables to use in the convolution.
-            with tf.name_scope('inputNeighbours'):
-                # A variable to store the kernal used to workout the potential pool for each column
-                # The kernal must be a 4d tensor.
-                self.kernel = [1, self.potentialHeight, self.potentialWidth, 1]
-                # The image must be a 4d tensor for the convole function. Add some extra dimensions.
-                self.image = tf.reshape(self.newGrid, [1, self.inputHeight, self.inputWidth, 1], name='image')
-                # Create the stride for the convolution
-                self.stride = [1, self.stepY, self.stepX, 1]
+                # Create the variables to use in the convolution.
+                with tf.name_scope('inputNeighbours'):
+                    # A variable to store the kernal used to workout the potential pool for each column
+                    # The kernal must be a 4d tensor.
+                    self.kernel = [1, self.potentialHeight, self.potentialWidth, 1]
+                    # The image must be a 4d tensor for the convole function. Add some extra dimensions.
+                    self.image = tf.reshape(self.newGrid, [1, self.inputHeight, self.inputWidth, 1], name='image')
+                    # Create the stride for the convolution
+                    self.stride = [1, self.stepY, self.stepX, 1]
 
-                # Create the padding sizes to use and the padding node.
-                with tf.name_scope('padding'):
-                    [padU, padD, padL, padR] = self.getPaddingSizes()
-                    # print("[padL, padR, padU, padD] = %s, %s, %s, %s" % (padL, padR, padU, padD))
-                    self.paddings = tf.constant([[0, 0], [padU, padD], [padL, padR], [0, 0]])
-                    # set the padding
-                    if self.wrapInput is True:
-                        # We will add our own padding so we can reflect the input.
-                        # This prevents the edges from being unfairly hindered due to a smaller overlap with the kernel.
-                        self.paddedInput = tf.pad(self.image, self.paddings, "REFLECT")
-                    else:
-                        self.paddedInput = tf.pad(self.image, self.paddings, "CONSTANT")
+                    # Create the padding sizes to use and the padding node.
+                    with tf.name_scope('padding'):
+                        [padU, padD, padL, padR] = self.getPaddingSizes()
+                        # print("[padL, padR, padU, padD] = %s, %s, %s, %s" % (padL, padR, padU, padD))
+                        self.paddings = tf.constant([[0, 0], [padU, padD], [padL, padR], [0, 0]])
+                        # set the padding
+                        if self.wrapInput is True:
+                            # We will add our own padding so we can reflect the input.
+                            # This prevents the edges from being unfairly hindered due to a smaller overlap with the kernel.
+                            self.paddedInput = tf.pad(self.image, self.paddings, "REFLECT")
+                        else:
+                            self.paddedInput = tf.pad(self.image, self.paddings, "CONSTANT")
 
-                # From the padded input for each HTM column get a list of the potential inputs that column can connect to.
-                # Rates can be used to set how many pixels between each slected pixel are skipped.
-                self.imageNeib4d = tf.extract_image_patches(images=self.paddedInput,
-                                                            ksizes=self.kernel,
-                                                            strides=self.stride,
-                                                            rates=[1, 1, 1, 1],
-                                                            padding='VALID')
+                    # From the padded input for each HTM column get a list of the potential inputs that column can connect to.
+                    # Rates can be used to set how many pixels between each slected pixel are skipped.
+                    self.imageNeib4d = tf.extract_image_patches(images=self.paddedInput,
+                                                                ksizes=self.kernel,
+                                                                strides=self.stride,
+                                                                rates=[1, 1, 1, 1],
+                                                                padding='VALID')
 
-                # print("kernel = \n%s" % self.kernel)
-                # print("stride = \n%s" % self.stride)
-                # print("image = \n%s" % self.image)
-                # print("paddedInput = \n%s" % self.paddedInput)
-                # print("imageNeib4d = \n%s" % self.imageNeib4d)
+                    # print("kernel = \n%s" % self.kernel)
+                    # print("stride = \n%s" % self.stride)
+                    # print("image = \n%s" % self.image)
+                    # print("paddedInput = \n%s" % self.paddedInput)
+                    # print("imageNeib4d = \n%s" % self.imageNeib4d)
 
-                # Reshape rates as the output is 3 dimensional and we only require 2 dimensions
-                # A list for each of the htm columns that shows what each columns can potentially connect to.
-                self.imageNeib = tf.reshape(self.imageNeib4d,
-                                            [self.numColumns,
-                                             self.potentialHeight*self.potentialWidth],
-                                            name='overlapImage')
+                    # Reshape rates as the output is 3 dimensional and we only require 2 dimensions
+                    # A list for each of the htm columns that shows what each columns can potentially connect to.
+                    self.imageNeib = tf.reshape(self.imageNeib4d,
+                                                [self.numColumns,
+                                                 self.potentialHeight*self.potentialWidth],
+                                                name='overlapImage')
 
-                # tf.squeeze Removes dimensions of size 1 from the shape of a tensor.
-                self.colInputPotSyn = tf.squeeze(self.imageNeib)
+                    # tf.squeeze Removes dimensions of size 1 from the shape of a tensor.
+                    self.colInputPotSyn = tf.squeeze(self.imageNeib)
 
-        # Add a masked small tiebreaker value to the self.colInputPotSyn scores.
-        with tf.name_scope('maskTiebreaker'):
-            # Multiply the tiebreaker values by the colInputPotSyn then add them to it.
-            # Since the colInputPotSyn contains ones and zeros some tiebreaker values are
-            # masked out. This means the tie breaker will be different for each input
-            # pattern.
-            # print("colInputPotSyn.shape = %s" % self.colInputPotSyn.shape)
-            # print("potSynTieBreaker.shape = %s,%s" % self.potSynTieBreaker.shape)
-            self.potSynTieBreakerTf = tf.convert_to_tensor(self.potSynTieBreaker, np.float32, name='potSynTieBreaker')
-            self.maskedTieBreaker = tf.multiply(self.colInputPotSyn, self.potSynTieBreakerTf)
-            self.colInputPotSynTie = tf.add(self.colInputPotSyn, self.maskedTieBreaker)
+            # Add a masked small tiebreaker value to the self.colInputPotSyn scores.
+            with tf.name_scope('maskTiebreaker'):
+                # Multiply the tiebreaker values by the colInputPotSyn then add them to it.
+                # Since the colInputPotSyn contains ones and zeros some tiebreaker values are
+                # masked out. This means the tie breaker will be different for each input
+                # pattern.
+                # print("colInputPotSyn.shape = %s" % self.colInputPotSyn.shape)
+                # print("potSynTieBreaker.shape = %s,%s" % self.potSynTieBreaker.shape)
+                self.potSynTieBreakerTf = tf.convert_to_tensor(self.potSynTieBreaker, np.float32, name='potSynTieBreaker')
+                self.maskedTieBreaker = tf.multiply(self.colInputPotSyn, self.potSynTieBreakerTf)
+                self.colInputPotSynTie = tf.add(self.colInputPotSyn, self.maskedTieBreaker)
 
-        # Calculate the potential overlap scores for every column.
-        # Sum the potential inputs for every column.
-        with tf.name_scope('potOverlap'):
-            self.colPotOverlaps = tf.reduce_sum(self.colInputPotSynTie, 1)
+            # Calculate the potential overlap scores for every column.
+            # Sum the potential inputs for every column.
+            with tf.name_scope('potOverlap'):
+                self.colPotOverlaps = tf.reduce_sum(self.colInputPotSynTie, 1)
 
-        # Call the tf functions to calculate the overlap value.
-        with tf.name_scope('overlap'):
-            # Each synapse is check to see if it is connected.
-            # If so then the input that synapse connects to is returned, zero otherwise.
-            # We have to cast the output of the comparison from a bool to a float so it can be multiplied.
-            self.connectedSynInputs = tf.multiply(
-                                                  tf.cast(
-                                                          tf.greater(self.colSynPerm, self.connectedPermParam),
-                                                          tf.float32),
-                                                  self.colInputPotSyn)
-            # Compute the sum of all the inputs that are connected to a synapses. This is the overlap score of an HTM column.
-            # This is done over the first dimension to sum all the synapses for one column.
-            self.colOverlapVals = tf.reduce_sum(self.connectedSynInputs, 1)
-            # Add a small tiebreaker value to the column overlap scores vector.
-            self.colOverlapValsTie = tf.add(self.colOverlapVals, self.colTieBreaker)
+            # Call the tf functions to calculate the overlap value.
+            with tf.name_scope('overlap'):
+                # Each synapse is check to see if it is connected.
+                # If so then the input that synapse connects to is returned, zero otherwise.
+                # We have to cast the output of the comparison from a bool to a float so it can be multiplied.
+                self.connectedSynInputs = tf.multiply(
+                                                      tf.cast(
+                                                              tf.greater(self.colSynPerm, self.connectedPermParam),
+                                                              tf.float32),
+                                                      self.colInputPotSyn)
+                # Compute the sum of all the inputs that are connected to a synapses. This is the overlap score of an HTM column.
+                # This is done over the first dimension to sum all the synapses for one column.
+                self.colOverlapVals = tf.reduce_sum(self.connectedSynInputs, 1)
+                # Add a small tiebreaker value to the column overlap scores vector.
+                self.colOverlapValsTie = tf.add(self.colOverlapVals, self.colTieBreaker)
 
-        # Set any overlap values that are smaller then the
-        # minOverlap value to zero.
-        with tf.name_scope('removeSmallOverlaps'):
-            self.colOverlapValsTieMin = tf.multiply(
-                                                    tf.cast(tf.greater(self.colOverlapValsTie,
-                                                            tf.cast(self.minOverlap, tf.float32)),
-                                                            tf.float32),
-                                                    self.colOverlapValsTie)
+            # Set any overlap values that are smaller then the
+            # minOverlap value to zero.
+            with tf.name_scope('removeSmallOverlaps'):
+                self.colOverlapValsTieMin = tf.multiply(
+                                                        tf.cast(tf.greater(self.colOverlapValsTie,
+                                                                tf.cast(self.minOverlap, tf.float32)),
+                                                                tf.float32),
+                                                        self.colOverlapValsTie)
 
-        # Create variables to store certain tensors in our graph.
-        with tf.variable_scope("storedVars1", reuse=tf.AUTO_REUSE):
-            # We set these variables as non trainable since we are not using back propagation.
-            self.prevColInputPotSyn = tf.get_variable("prevColInputPotSyn",
-                                                      shape=self.colInputPotSyn.get_shape().as_list(),
+            # Create variables to store certain tensors in our graph.
+            with tf.variable_scope("storedVars1", reuse=tf.AUTO_REUSE):
+                # We set these variables as non trainable since we are not using back propagation.
+                self.prevColInputPotSyn = tf.get_variable("prevColInputPotSyn",
+                                                          shape=self.colInputPotSyn.get_shape().as_list(),
+                                                          dtype=tf.float32,
+                                                          initializer=tf.zeros_initializer,
+                                                          trainable=False)
+                self.prevColInputPotSyn = self.prevColInputPotSyn.assign(self.colInputPotSyn)
+
+                # We set these variables as non trainable since we are not using back propagation.
+                self.prevColSynPerm = tf.get_variable("prevColSynPerm",
+                                                      shape=self.colSynPerm.get_shape().as_list(),
                                                       dtype=tf.float32,
                                                       initializer=tf.zeros_initializer,
                                                       trainable=False)
-            self.prevColInputPotSyn = self.prevColInputPotSyn.assign(self.colInputPotSyn)
+                self.prevColSynPerm = self.prevColSynPerm.assign(self.colSynPerm)
 
-            # We set these variables as non trainable since we are not using back propagation.
-            self.prevColSynPerm = tf.get_variable("prevColSynPerm",
-                                                  shape=self.colSynPerm.get_shape().as_list(),
-                                                  dtype=tf.float32,
-                                                  initializer=tf.zeros_initializer,
-                                                  trainable=False)
-            self.prevColSynPerm = self.prevColSynPerm.assign(self.colSynPerm)
+                self.prevColPotOverlaps = tf.get_variable("prevColPotOverlaps",
+                                                          shape=self.colPotOverlaps.get_shape().as_list(),
+                                                          dtype=tf.float32,
+                                                          initializer=tf.zeros_initializer,
+                                                          trainable=False)
+                self.prevColPotOverlaps = self.prevColPotOverlaps.assign(self.colPotOverlaps)
 
-            self.prevColPotOverlaps = tf.get_variable("prevColPotOverlaps",
-                                                      shape=self.colPotOverlaps.get_shape().as_list(),
-                                                      dtype=tf.float32,
-                                                      initializer=tf.zeros_initializer,
-                                                      trainable=False)
-            self.prevColPotOverlaps = self.prevColPotOverlaps.assign(self.colPotOverlaps)
+                self.prevOverlap = tf.get_variable("prevOverlap",
+                                                   shape=self.colOverlapVals.get_shape().as_list(),
+                                                   dtype=tf.float32,
+                                                   initializer=tf.zeros_initializer,
+                                                   trainable=False)
+                self.prevOverlap = self.prevOverlap.assign(self.colOverlapVals)
 
-            self.prevOverlap = tf.get_variable("prevOverlap",
-                                               shape=self.colOverlapVals.get_shape().as_list(),
-                                               dtype=tf.float32,
-                                               initializer=tf.zeros_initializer,
-                                               trainable=False)
-            self.prevOverlap = self.prevOverlap.assign(self.colOverlapVals)
+                self.prevOverlapTieMin = tf.get_variable("prevOverlapTieMin",
+                                                         shape=self.colOverlapValsTieMin.get_shape().as_list(),
+                                                         dtype=tf.float32,
+                                                         initializer=tf.zeros_initializer,
+                                                         trainable=False)
+                self.prevOverlapTieMin = self.prevOverlapTieMin.assign(self.colOverlapValsTieMin)
 
-            self.prevOverlapTieMin = tf.get_variable("prevOverlapTieMin",
-                                                     shape=self.colOverlapValsTieMin.get_shape().as_list(),
-                                                     dtype=tf.float32,
-                                                     initializer=tf.zeros_initializer,
-                                                     trainable=False)
-            self.prevOverlapTieMin = self.prevOverlapTieMin.assign(self.colOverlapValsTieMin)
+            # Print the output.
+            with tf.name_scope('print'):
+                # Use a print node in the graph. The first input is the input data to pass to this node,
+                # the second is an array of which nodes in the graph you would like to print
+                # pr_mult = tf.Print(mult_y, [mult_y, newGrid], summarize = 25)
+                self.pr_mult = tf.Print(self.colOverlapValsTieMin,
+                                        [self.colInputPotSyn, self.colPotOverlaps, self.colOverlapValsTieMin],
+                                        message="Print", summarize=200)
 
-        # Print the output.
-        with tf.name_scope('print'):
-            # Use a print node in the graph. The first input is the input data to pass to this node,
-            # the second is an array of which nodes in the graph you would like to print
-            # pr_mult = tf.Print(mult_y, [mult_y, newGrid], summarize = 25)
-            self.pr_mult = tf.Print(self.colOverlapValsTieMin,
-                                    [self.colInputPotSyn, self.colPotOverlaps, self.colOverlapValsTieMin],
-                                    message="Print", summarize=200)
+            # Create a summary to monitor padded input tensor
+            tf.summary.histogram("paddedInput", self.paddedInput)
+            # Create images from the  inputs to display in tensorboard
+            with tf.name_scope('tbImages'):
+                self.InputFloat = tf.to_float(self.image)
+                tf.summary.image("InputImage", self.InputFloat)
+                self.paddedInputFloat = tf.to_float(self.paddedInput)
+                tf.summary.image("paddedInputImage", self.paddedInputFloat)
+                #self.colInputPotSynFloat = tf.to_float(self.imageNeib4d)
+                #tf.summary.image("colInputPotSyn", self.colInputPotSynFloat)
 
-        # Create a summary to monitor padded input tensor
-        tf.summary.histogram("paddedInput", self.paddedInput)
-        # Create images from the  inputs to display in tensorboard
-        with tf.name_scope('tbImages'):
-            self.InputFloat = tf.to_float(self.image)
-            tf.summary.image("InputImage", self.InputFloat)
-            self.paddedInputFloat = tf.to_float(self.paddedInput)
-            tf.summary.image("paddedInputImage", self.paddedInputFloat)
-            #self.colInputPotSynFloat = tf.to_float(self.imageNeib4d)
-            #tf.summary.image("colInputPotSyn", self.colInputPotSynFloat)
-
-        # op to write logs to Tensorboard
-        self.summary_writer = tf.summary.FileWriter(self.logsPath, graph=tf.get_default_graph())
+            # op to write logs to Tensorboard
+            self.summary_writer = tf.summary.FileWriter(self.logsPath, graph=tf.get_default_graph())
 
         ###################################################################
         # Create the input to calculate the indicies that the potential Synapses connect to.
@@ -515,6 +517,15 @@ class OverlapCalculator():
             self.summary_writer.add_summary(summary)
 
         return potSynXYIndex
+
+    def getPotOverlapTensor(self):
+        # Return the tensor holding the calculated potential overlap score for every column.
+        # This is the overlap score each column has if all poential synpases
+        # are checked for active inputs.
+        return self.prevColPotOverlaps
+
+    def getOverlapTensor(self):
+        return self.pr_mult
 
     def calculateOverlap(self, colSynPerm, inputGrid):
 

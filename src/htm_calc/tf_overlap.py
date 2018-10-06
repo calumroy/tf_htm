@@ -201,7 +201,8 @@ class OverlapCalculator():
                                                               tf.greater(self.colSynPerm, self.connectedPermParam),
                                                               tf.float32),
                                                       self.colInputPotSyn)
-                # Compute the sum of all the inputs that are connected to a synapses. This is the overlap score of an HTM column.
+                # Compute the sum of all the inputs that are connected to a synapses.
+                # This is the overlap score of an HTM column.
                 # This is done over the first dimension to sum all the synapses for one column.
                 self.colOverlapVals = tf.reduce_sum(self.connectedSynInputs, 1)
                 # Add a small tiebreaker value to the column overlap scores vector.
@@ -217,7 +218,7 @@ class OverlapCalculator():
                                                         self.colOverlapValsTie)
 
             # Create variables to store certain tensors in our graph.
-            with tf.variable_scope("storedVars1", reuse=tf.AUTO_REUSE):
+            with tf.variable_scope("storedVars", reuse=tf.AUTO_REUSE):
                 # We set these variables as non trainable since we are not using back propagation.
                 self.prevColInputPotSyn = tf.get_variable("prevColInputPotSyn",
                                                           shape=self.colInputPotSyn.get_shape().as_list(),
@@ -626,3 +627,4 @@ if __name__ == '__main__':
     #colOverlaps = overlapCalc.removeSmallOverlaps(colOverlaps)
 
     #print("colOverlaps = \n%s" % colOverlaps)
+

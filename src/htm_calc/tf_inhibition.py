@@ -113,7 +113,7 @@ class inhibitionCalculator():
         # This is just an incrementing vector from zero to the number of columns - 1
         self.row_numVect = np.array([i for i in range(self.width*self.height)])
 
-        # Create just a vector stroing if a column is inhibited or not
+        # Create just a vector storing if a column is inhibited or not
         self.inhibCols = np.array([0 for i in range(self.width*self.height)])
 
         # Create a vector of minOverlap indicies. This stores the position
@@ -123,6 +123,14 @@ class inhibitionCalculator():
         # Now Also calculate a convole grid so the columns position
         # in the resulting col inhib overlap matrix can be tracked.
         self.incrementingMat = np.array([[1+i+self.width*j for i in range(self.width)] for j in range(self.height)])
+
+        # Take the colOverlapMat and add a small number to each overlap
+        # value based on that row and col number. This helps when deciding
+        # how to break ties in the inhibition stage. Note this is not a random value!
+        # Make sure the tiebreaker contains values less then 1.
+        normValue = 1.0/float(self.numColumns+1)
+        self.tieBreaker = np.array([[(1+i+j*self.width)*normValue for i in range(self.width)] for j in range(self.height)])
+        print "self.tieBreaker = \n%s" % self.tieBreaker
 
         ############################################
         # Create tensorflow variables and functions
@@ -142,8 +150,7 @@ class inhibitionCalculator():
 
         # Store a vector where each element stores for a column how many times
         # that column appears in other columns convole lists.
-        #self.nonPaddingSumVect = self.get_gtZeroMat(self.colInConvoleList)
-        #self.nonPaddingSumVect = self.get_sumRowMat(self.nonPaddingSumVect)
+        self.nonPaddingSumVect = self.calculateNonPaddingSumVect(self.colInConvoleList)
 
         with tf.name_scope('tf_inhibition'):
             with tf.name_scope('inhibInputs'):
@@ -159,9 +166,26 @@ class inhibitionCalculator():
                 else:
                     self.potColOverlapsGrid = potColOverlapsGrid
 
-            self.mult_y = tf.multiply(self.potColOverlapsGrid, self.colOverlapsGrid)
+            with tf.name_scope('WinningCols'):
+                self.inhibCols = tf.zeros(self.inhibCols.shape, dtype=tf.float32, name='inhibCols')
+
+                with tf.name_scope('addTieBreaker'):
+                    # Add the tieBreaker value to the overlap values.
+                    self.overlapsGridTie = tf.add(self.colOverlapsGrid, self.tieBreaker)
+                # Calculate the overlaps associated with columns that can be inhibited.
+                with tf.name_scope('getColOverlapMatOrig'):
+                    self.colOverlapMatOrig = self.poolInputs(self.overlapsGridTie)
+
+                with tf.name_scope('getActiveColumnVect'):
+                    # Create a vector of the overlap values for each column
+                    self.colOverlapVect = tf.reshape(self.overlapsGridTie, [self.numColumns])
+
+                    activeCols = self.calculateActiveCol(colOverlapMatOrig)
+
 
             self.summary_writer = tf.summary.FileWriter(self.logsPath, graph=tf.get_default_graph())
+
+                #self.colOverlapsGrid
 
     def calculateConvolePattern(self, inputGrid):
         '''
@@ -181,7 +205,7 @@ class inhibitionCalculator():
          Note: height = numCols = self.width * self.height
         '''
 
-        print "inputGrid = \n%s" % inputGrid
+        # print "inputGrid = \n%s" % inputGrid
         width = len(inputGrid[0])
         height = len(inputGrid)
 
@@ -233,7 +257,23 @@ class inhibitionCalculator():
         with tf.Session() as sess:
             outputGrid = sess.run(convolePat)
 
-        print("outputGrid = \n%s" % outputGrid)
+        print("colInConvoleList = \n%s" % outputGrid)
+
+        return outputGrid
+
+    def calculateNonPaddingSumVect(self, inputGrid):
+
+        with tf.name_scope('nonPaddingSumVect'):
+            nonPaddingSumVect = tf.reduce_sum(
+                                              tf.cast(tf.greater(inputGrid, 0), tf.float32),
+                                              1)
+
+        outputGrid = None
+        # Run the tf graph
+        with tf.Session() as sess:
+            outputGrid = sess.run(nonPaddingSumVect)
+
+        print("nonPaddingSumVect = \n%s" % outputGrid)
 
         return outputGrid
 
@@ -354,7 +394,33 @@ class inhibitionCalculator():
             # tf.squeeze Removes dimensions of size 1 from the shape of a tensor.
             self.colConvole = tf.squeeze(self.imageNeib, name="colConvole")
 
+    def calculateActiveCol(self, colOverlapMat):
+        # Calculate the active columns. The columns that have a higher overlap
+        # value then the neighbouring ones.
 
+        # Sort the colOverlap matrix for each row. A row holds the inhib overlap
+        # values for a single column.
+        sortedColOverlapMat = self.sortOverlapMatrix(colOverlapMat)
+        # Get the minLocalActivity for each col.
+        minLocalAct = self.get_minLocAct(self.minOverlapIndex,
+                                         sortedColOverlapMat,
+                                         self.row_numVect)
+        #print "minLocalAct = \n%s" % minLocalAct
+
+        # First take the colOverlaps matrix and flatten it into a vector.
+        # Broadcast minLocalActivity so it is the same dim as colOverlapMat
+        widthColOverlapMat = len(sortedColOverlapMat[0])
+        minLocalAct = np.tile(np.array([minLocalAct]).transpose(), (1, widthColOverlapMat))
+        # Now calculate for each columns list of overlap values, which ones are larger
+        # then the minLocalActivity number.
+        activeCols = self.get_activeCol(colOverlapMat, minLocalAct)
+
+        # print "colOverlapMat = \n%s" % colOverlapMat
+        # print "sortedColOverlapMat = \n%s" % sortedColOverlapMat
+        # print "minLocalAct = \n%s" % minLocalAct
+        # print "activeCols = \n%s" % activeCols
+
+        return activeCols
 
 if __name__ == '__main__':
 

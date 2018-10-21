@@ -180,7 +180,7 @@ class inhibitionCalculator():
                     # Create a vector of the overlap values for each column
                     self.colOverlapVect = tf.reshape(self.overlapsGridTie, [self.numColumns])
 
-                    activeCols = self.calculateActiveCol(colOverlapMatOrig)
+                    activeCols = self.calculateActiveCol(self.colOverlapMatOrig)
 
 
             self.summary_writer = tf.summary.FileWriter(self.logsPath, graph=tf.get_default_graph())
@@ -289,13 +289,13 @@ class inhibitionCalculator():
         # Calculate the input overlaps for each column.
         # Create the variables to use in the convolution.
         with tf.name_scope('getColInhibInputs'):
-            inputInhibCols = self.poolInputs(inputGrid)
+            colInhibInputs = self.poolInputs(inputGrid)
 
         # Run the tf graph
         with tf.Session() as sess:
             #sess.run(tf.global_variables_initializer())
 
-            inputInhibCols = sess.run(self.colConvole)
+            inputInhibCols = sess.run(colInhibInputs)
 
         print "getColInhibInputs Input = \n%s" % inputGrid
         print "inputInhibCols = \n%s" % inputInhibCols
@@ -351,74 +351,105 @@ class inhibitionCalculator():
         with tf.name_scope('poolInputs'):
             # A variable to store the kernal used to workout the potential pool for each column
             # The kernal must be a 4d tensor.
-            self.kernel = [1, self.potentialHeight, self.potentialWidth, 1]
+            kernel = [1, self.potentialHeight, self.potentialWidth, 1]
             # The image must be a 4d tensor for the convole function. Add some extra dimensions.
-            self.image = tf.reshape(inputGrid, [1, self.height, self.width, 1], name='image')
+            image = tf.reshape(inputGrid, [1, self.height, self.width, 1], name='image')
             # Create the stride for the convolution
-            self.stride = [1, self.stepY, self.stepX, 1]
+            stride = [1, self.stepY, self.stepX, 1]
 
             # Create the padding sizes to use and the padding node.
             with tf.name_scope('padding'):
                 [padU, padD, padL, padR] = self.getPaddingSizes()
                 # print("[padL, padR, padU, padD] = %s, %s, %s, %s" % (padL, padR, padU, padD))
-                self.paddings = tf.constant([[0, 0], [padU, padD], [padL, padR], [0, 0]])
+                paddings = tf.constant([[0, 0], [padU, padD], [padL, padR], [0, 0]])
                 # set the padding
                 if self.wrapInput is True:
                     # We will add our own padding so we can reflect the input.
                     # This prevents the edges from being unfairly hindered due to a smaller overlap with the kernel.
-                    self.paddedInput = tf.pad(self.image, self.paddings, "REFLECT")
+                    paddedInput = tf.pad(image, paddings, "REFLECT")
                 else:
-                    self.paddedInput = tf.pad(self.image, self.paddings, "CONSTANT")
+                    paddedInput = tf.pad(image, paddings, "CONSTANT")
 
             # From the padded input for each HTM column get a list of the potential inputs that column can connect to.
             # Rates can be used to set how many pixels between each slected pixel are skipped.
-            self.imageNeib4d = tf.extract_image_patches(images=self.paddedInput,
-                                                        ksizes=self.kernel,
-                                                        strides=self.stride,
-                                                        rates=[1, 1, 1, 1],
-                                                        padding='VALID')
+            imageNeib4d = tf.extract_image_patches(images=paddedInput,
+                                                   ksizes=kernel,
+                                                   strides=stride,
+                                                   rates=[1, 1, 1, 1],
+                                                   padding='VALID')
 
-            # print("kernel = \n%s" % self.kernel)
-            # print("stride = \n%s" % self.stride)
-            # print("image = \n%s" % self.image)
-            # print("paddedInput = \n%s" % self.paddedInput)
-            # print("imageNeib4d = \n%s" % self.imageNeib4d)
+            # print("kernel = \n%s" % kernel)
+            # print("stride = \n%s" % stride)
+            # print("image = \n%s" % image)
+            # print("paddedInput = \n%s" % paddedInput)
+            # print("imageNeib4d = \n%s" % imageNeib4d)
 
             # Reshape rates as the output is 3 dimensional and we only require 2 dimensions
             # A list for each of the htm columns that shows the results of each columns convolution
-            self.imageNeib = tf.reshape(self.imageNeib4d,
-                                        [self.numColumns,
-                                         self.potentialHeight*self.potentialWidth],
-                                        name='overlapImage')
+            imageNeib = tf.reshape(imageNeib4d,
+                                   [self.numColumns,
+                                    self.potentialHeight*self.potentialWidth],
+                                   name='overlapImage')
 
             # tf.squeeze Removes dimensions of size 1 from the shape of a tensor.
-            self.colConvole = tf.squeeze(self.imageNeib, name="colConvole")
+            colConvole = tf.squeeze(imageNeib, name="colConvole")
+
+            return colConvole
 
     def calculateActiveCol(self, colOverlapMat):
         # Calculate the active columns. The columns that have a higher overlap
         # value then the neighbouring ones.
 
+        numCols, numInhib = colOverlapMat.get_shape().as_list()
+        print("numCols = ", numCols)
+        print("numInhib = ", numInhib)
+
+        desiredLocalActivity = 2
+        minOverlapIndex = np.array([desiredLocalActivity for i in range(numCols)])
+
+        # Create just a vector storing the row numbers for each column.
+        # This is just an incrementing vector from zero to the number of columns - 1
+        row_numVect = np.array([i for i in range(numCols)])
+        rowNumVect = tf.constant(row_numVect, dtype=tf.int32)
+
         # Sort the colOverlap matrix for each row. A row holds the inhib overlap
         # values for a single column.
-        sortedColOverlapMat = self.sortOverlapMatrix(colOverlapMat)
-        # Get the minLocalActivity for each col.
-        minLocalAct = self.get_minLocAct(self.minOverlapIndex,
-                                         sortedColOverlapMat,
-                                         self.row_numVect)
-        #print "minLocalAct = \n%s" % minLocalAct
+        sortedColOverlapMat = tf.contrib.framework.sort(colOverlapMat,
+                                                        axis=1,
+                                                        direction='ASCENDING',
+                                                        name='sortedColOverlapMat')
 
-        # First take the colOverlaps matrix and flatten it into a vector.
-        # Broadcast minLocalActivity so it is the same dim as colOverlapMat
-        widthColOverlapMat = len(sortedColOverlapMat[0])
-        minLocalAct = np.tile(np.array([minLocalAct]).transpose(), (1, widthColOverlapMat))
+        # print("sortedColOverlapMat = \n%s" % sortedColOverlapMat)
+
+        # Get the minLocalActivity for each col.
+        colIndicies = tf.subtract(numInhib, minOverlapIndex)
+        print("rowNumVect = \n%s" % rowNumVect)
+        print("colIndicies = \n%s" % colIndicies)
+
+        indicies = tf.stack([rowNumVect, colIndicies], axis=-1)
+        minLocalAct = tf.gather_nd(sortedColOverlapMat, indicies)
+
+        # numCols, widthColOverlapMat = sortedColOverlapMat.shape
+        # minLocalAct = tf.tile(tf.transpose(minLocalAct), (1, widthColOverlapMat))
+
+        # print("sortedColOverlapMat = \n%s" % sortedColOverlapMat)
+        # print("minLocalAct.shape = \n%s" % minLocalAct.shape)
+        print("minLocalAct = \n%s" % minLocalAct)
+
         # Now calculate for each columns list of overlap values, which ones are larger
         # then the minLocalActivity number.
-        activeCols = self.get_activeCol(colOverlapMat, minLocalAct)
+        # Broadcast the minLocalAct so it has the same dim as colOverlapMat
+        # This is acheived by adding an extra empty dimension to the minLocalAct then broadcasting
+        expMinLocalAct = tf.expand_dims(minLocalAct, 1)
+        bdim = [numCols, numInhib]
+        print("bdim = " , bdim)
+        minLocalActExpand = tf.broadcast_to(expMinLocalAct, bdim)
+        activeColsTemp = tf.cast(tf.greater(colOverlapMat, minLocalActExpand),
+                                 tf.float32)
+        activeCols = tf.cast(tf.greater(activeColsTemp, 0),
+                             tf.float32)
 
-        # print "colOverlapMat = \n%s" % colOverlapMat
-        # print "sortedColOverlapMat = \n%s" % sortedColOverlapMat
-        # print "minLocalAct = \n%s" % minLocalAct
-        # print "activeCols = \n%s" % activeCols
+        print("activeCols = \n%s" % activeCols)
 
         return activeCols
 

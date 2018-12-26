@@ -1,3 +1,4 @@
+from __future__ import print_function
 import tensorflow as tf
 import numpy as np
 import math
@@ -113,9 +114,6 @@ class inhibitionCalculator():
         # This is just an incrementing vector from zero to the number of columns - 1
         self.row_numVect = np.array([i for i in range(self.width*self.height)])
 
-        # Create just a vector storing if a column is inhibited or not
-        self.inhibCols = np.array([0 for i in range(self.width*self.height)])
-
         # Create a vector of minOverlap indicies. This stores the position
         # for each col where the minOverlap resides, in the sorted Convole overlap mat
         self.minOverlapIndex = np.array([self.desiredLocalActivity for i in range(self.width*self.height)])
@@ -130,7 +128,7 @@ class inhibitionCalculator():
         # Make sure the tiebreaker contains values less then 1.
         normValue = 1.0/float(self.numColumns+1)
         self.tieBreaker = np.array([[(1+i+j*self.width)*normValue for i in range(self.width)] for j in range(self.height)])
-        print "self.tieBreaker = \n%s" % self.tieBreaker
+        print("self.tieBreaker = \n%s" % self.tieBreaker)
 
         ############################################
         # Create tensorflow variables and functions
@@ -167,7 +165,8 @@ class inhibitionCalculator():
                     self.potColOverlapsGrid = potColOverlapsGrid
 
             with tf.name_scope('WinningCols'):
-                self.inhibCols = tf.zeros(self.inhibCols.shape, dtype=tf.float32, name='inhibCols')
+                # Create just a vector storing if a column is inhibited or not
+                self.inhibColsZeros = tf.zeros(self.width*self.height, dtype=tf.int32, name='inhibColsZeros')
 
                 with tf.name_scope('addTieBreaker'):
                     # Add the tieBreaker value to the overlap values.
@@ -180,12 +179,57 @@ class inhibitionCalculator():
                     # Create a vector of the overlap values for each column
                     self.colOverlapVect = tf.reshape(self.overlapsGridTie, [self.numColumns])
 
-                    activeCols = self.calculateActiveCol(self.colOverlapMatOrig)
+                    self.activeCols = self.calculateActiveCol(self.colOverlapMatOrig)
+                    self.activeColumnVect = self.calculateActiveColumnVect(self.activeCols,
+                                                                           self.inhibColsZeros,
+                                                                           self.colOverlapVect)
+
+                with tf.name_scope('getInhibColsVect'):
+                    self.inhibCols, self.notInhibOrActNum = self.calculateInhibCols(self.activeColumnVect, self.colOverlapVect)
 
 
-            self.summary_writer = tf.summary.FileWriter(self.logsPath, graph=tf.get_default_graph())
+                # Run the while loop which keeps calucalting until notInhibOrActNumFinal = 0
+                with tf.name_scope('whileLoop'):
+                    (self.inhibColsFinal,
+                        self.notInhibOrActNumFinal,
+                        self.activeColumnVectFinal) = tf.while_loop(self.condition, self.body,
+                                                                    [self.inhibCols,
+                                                                     self.notInhibOrActNum,
+                                                                     self.activeColumnVect],
+                                                                    back_prop=False)
+                # Print the output.
+                with tf.name_scope('print'):
+                    # Use a print node in the graph. The first input is the input data to pass to this node,
+                    # the second is an array of which nodes in the graph you would like to print
+                    # pr_mult = tf.Print(mult_y, [mult_y, newGrid], summarize = 25)
+                    self.print_out = tf.print("\n Printing Tensors \n"
+                                              "\n self.inhibCols = ", self.inhibCols,
+                                              "\n self.notInhibOrActNum = ", self.notInhibOrActNum,
+                                              "\n self.activeColumnVect = ", self.activeColumnVect,
+                                              "\n self.activeColumnVectFinal = ", self.activeColumnVectFinal,
+                                              summarize=200)
 
-                #self.colOverlapsGrid
+                # Make sure the print_out is performed during the graph execution.
+                with tf.control_dependencies([self.print_out]):
+                    # Perform some tf operation so the print out occurs.
+                    self.inhibColsFinal_print = tf.multiply(self.inhibColsFinal, 1)
+
+
+                # # Print the output.
+                # with tf.name_scope('print'):
+                #     # Use a print node in the graph. The first input is the input data to pass to this node,
+                #     # the second is an array of which nodes in the graph you would like to print
+                #     # pr_mult = tf.Print(mult_y, [mult_y, newGrid], summarize = 25)
+                #     self.print_out = tf.print(self.inhibCols,
+                #                               [self.inhibCols,
+                #                                self.notInhibOrActNum,
+                #                                self.colOverlapVect,
+                #                                self.activeColumnVect],
+                #                               message="Print", summarize=200)
+
+
+
+            #self.summary_writer = tf.summary.FileWriter(self.logsPath, graph=tf.get_default_graph())
 
     def calculateConvolePattern(self, inputGrid):
         '''
@@ -215,7 +259,7 @@ class inhibitionCalculator():
         firstNonZeroVect = np.array([0 for i in range(width)])
 
         #print "width = %s height = %s" % (width, height)
-        print "Setting Up tf inhibition calculator"
+        print("Setting Up tf inhibition calculator")
         for c in range(width):
             #print "c = %s" % c
             # Search for the column numbers.
@@ -230,7 +274,7 @@ class inhibitionCalculator():
                     firstNonZeroVect[c] = firstNonZero
                     rolledInputGrid[:, c] = np.roll(inputGrid[:, c], (-r+firstNonZero-1), axis=0)
                     break
-        print "Done"
+        print("Done")
 
         #print "inputGrid = \n%s" % inputGrid
 
@@ -246,11 +290,11 @@ class inhibitionCalculator():
             # We have to cast the output of the comparison from a bool to a float so it can be multiplied.
 
             convolePat = tf.multiply(
-                                     tf.cast(tf.greater(rolledInputGrid, 0), tf.float32),
+                                     tf.cast(tf.greater(rolledInputGrid, 0), tf.int32),
                                      tf.cast(rolledInputGrid +
                                              tf.gather(firstNonZeroIndVect, self.col_num) -
                                              tf.gather(firstNonZeroVect, self.col_num) + 1,
-                                             tf.float32)
+                                             tf.int32)
                                     )
 
         # Run the tf graph
@@ -297,9 +341,9 @@ class inhibitionCalculator():
 
             inputInhibCols = sess.run(colInhibInputs)
 
-        print "getColInhibInputs Input = \n%s" % inputGrid
-        print "inputInhibCols = \n%s" % inputInhibCols
-        #print "inputInhibCols.shape = %s,%s" % inputInhibCols.shape
+        print("getColInhibInputs Input = \n%s" % inputGrid)
+        print("inputInhibCols = \n%s" % inputInhibCols)
+        #print("inputInhibCols.shape = %s,%s" % inputInhibCols.shape)
         return inputInhibCols
 
     def getPaddingSizes(self):
@@ -396,62 +440,306 @@ class inhibitionCalculator():
 
             return colConvole
 
+    def checkInhibCols(self, colOverlapMatOrig, colConvolePatternIndex, inhibCols):
+        # Calculate if any column in the matrix is inhibited.
+        # Any inhibited columns should be set as zero.
+        # Any columns not inhibited should be set to the input matrix value.
+        with tf.name_scope('check_inhibCols'):
+            colConvolePatInd = tf.constant(self.colConvolePatternIndex, dtype=tf.int32, name='colConvolePatternIndex')
+            col_con_pat_neg_one = tf.add(colConvolePatInd, -1, name='col_con_pat_neg_one')
+            zeros_mat_int32 = tf.zeros_like(col_con_pat_neg_one, dtype=tf.int32, name='zeros_mat_int32')
+            zeros_mat_f32 = tf.zeros_like(col_con_pat_neg_one, dtype=tf.float32, name='zeros_mat_f32')
+
+            indicies = tf.maximum(col_con_pat_neg_one, zeros_mat_int32)
+            cur_inhib_cols_sel = tf.gather(inhibCols, indicies, name='cur_inhib_cols_sel')
+
+            set_winToZero = tf.where(tf.equal(cur_inhib_cols_sel, 1), zeros_mat_f32, colOverlapMatOrig)
+
+            check_lZeroCol = tf.where(tf.greater_equal(col_con_pat_neg_one, zeros_mat_int32), set_winToZero, zeros_mat_f32)
+
+            return check_lZeroCol
+
     def calculateActiveCol(self, colOverlapMat):
         # Calculate the active columns. The columns that have a higher overlap
         # value then the neighbouring ones.
 
-        numCols, numInhib = colOverlapMat.get_shape().as_list()
-        print("numCols = ", numCols)
-        print("numInhib = ", numInhib)
+        with tf.name_scope('get_activeCol'):
+            numCols, numInhib = colOverlapMat.get_shape().as_list()
+            #print("numCols = ", numCols)
+            #print("numInhib = ", numInhib)
 
-        desiredLocalActivity = 2
-        minOverlapIndex = np.array([desiredLocalActivity for i in range(numCols)])
+            # Create just a vector storing the row numbers for each column.
+            # This is just an incrementing vector from zero to the number of columns - 1
+            rowNumVect = tf.constant(self.row_numVect, dtype=tf.int32)
 
-        # Create just a vector storing the row numbers for each column.
-        # This is just an incrementing vector from zero to the number of columns - 1
-        row_numVect = np.array([i for i in range(numCols)])
-        rowNumVect = tf.constant(row_numVect, dtype=tf.int32)
+            # Sort the colOverlap matrix for each row. A row holds the inhib overlap
+            # values for a single column.
+            sortedColOverlapMat = tf.contrib.framework.sort(colOverlapMat,
+                                                            axis=1,
+                                                            direction='ASCENDING',
+                                                            name='sortedColOverlapMat')
 
-        # Sort the colOverlap matrix for each row. A row holds the inhib overlap
-        # values for a single column.
-        sortedColOverlapMat = tf.contrib.framework.sort(colOverlapMat,
-                                                        axis=1,
-                                                        direction='ASCENDING',
-                                                        name='sortedColOverlapMat')
+            # print("sortedColOverlapMat = \n%s" % sortedColOverlapMat)
 
-        # print("sortedColOverlapMat = \n%s" % sortedColOverlapMat)
+            # Get the minLocalActivity for each col.
+            colIndicies = tf.subtract(numInhib, self.minOverlapIndex)
 
-        # Get the minLocalActivity for each col.
-        colIndicies = tf.subtract(numInhib, minOverlapIndex)
-        print("rowNumVect = \n%s" % rowNumVect)
-        print("colIndicies = \n%s" % colIndicies)
+            indicies = tf.stack([rowNumVect, colIndicies], axis=-1)
+            minLocalAct = tf.gather_nd(sortedColOverlapMat, indicies)
 
-        indicies = tf.stack([rowNumVect, colIndicies], axis=-1)
-        minLocalAct = tf.gather_nd(sortedColOverlapMat, indicies)
+            # Now calculate for each columns list of overlap values, which ones are larger
+            # then the minLocalActivity number.
+            # Broadcast the minLocalAct so it has the same dim as colOverlapMat
+            # This is achieved by adding an extra empty dimension to the minLocalAct then broadcasting
+            expMinLocalAct = tf.expand_dims(minLocalAct, axis=1, name='expMinLocalAct')
+            bdim = [numCols, numInhib]
+            #print("expMinLocalAct \n", expMinLocalAct)
+            #print("bdim \n", bdim)
+            minLocalActExpand = tf.broadcast_to(expMinLocalAct, bdim, name='minLocalActExpand')
+            activeColsTemp = tf.cast(tf.greater(colOverlapMat, minLocalActExpand),
+                                     tf.int32)
+            activeCols = tf.cast(tf.greater(activeColsTemp, 0),
+                                 tf.int32)
 
-        # numCols, widthColOverlapMat = sortedColOverlapMat.shape
-        # minLocalAct = tf.tile(tf.transpose(minLocalAct), (1, widthColOverlapMat))
+            #print("activeCols = \n%s" % activeCols)
 
-        # print("sortedColOverlapMat = \n%s" % sortedColOverlapMat)
-        # print("minLocalAct.shape = \n%s" % minLocalAct.shape)
-        print("minLocalAct = \n%s" % minLocalAct)
+            return activeCols
 
-        # Now calculate for each columns list of overlap values, which ones are larger
-        # then the minLocalActivity number.
-        # Broadcast the minLocalAct so it has the same dim as colOverlapMat
-        # This is acheived by adding an extra empty dimension to the minLocalAct then broadcasting
-        expMinLocalAct = tf.expand_dims(minLocalAct, 1)
-        bdim = [numCols, numInhib]
-        print("bdim = " , bdim)
-        minLocalActExpand = tf.broadcast_to(expMinLocalAct, bdim)
-        activeColsTemp = tf.cast(tf.greater(colOverlapMat, minLocalActExpand),
-                                 tf.float32)
-        activeCols = tf.cast(tf.greater(activeColsTemp, 0),
-                             tf.float32)
+    def calculateActiveColumnVect(self, activeCols, inhibCols, colOverlapVect):
+        # Calculate for each column a list of columns which that column can
+        # be inhibited by. Set the winning columns in this list as one.
+        # If a column is inhibited already then all those positions in
+        # the colwinners relating to that col are set as one. This means
+        # the inhibited columns don't determine the active columns
 
-        print("activeCols = \n%s" % activeCols)
+        # Calculate
+        # a matrix of the columns which should stay active because they
+        # won the inhibition convolution for all columns.
+        # if a column is inhibited then set that location to one only if
+        # that row does not represent that inhibited column.
+        with tf.name_scope('get_activeColMat'):
+            act_cols = tf.convert_to_tensor(activeCols, dtype=tf.int32, name='act_cols')
+            col_pat = tf.convert_to_tensor(self.colInConvoleList, dtype=tf.int32, name='col_pat')
+            col_num2 = tf.convert_to_tensor(self.col_num, dtype=tf.int32, name='col_num2')
+            row_numMat4 = tf.convert_to_tensor(self.row_numMat, dtype=tf.int32, name='row_numMat4')
+            cur_inhib_cols4 = tf.convert_to_tensor(inhibCols, dtype=tf.int32, name='cur_inhib_cols4')
 
-        return activeCols
+            cur_inhib_cols_row = tf.gather(cur_inhib_cols4, row_numMat4, name='cur_inhib_cols_row')
+            col_pat_neg_one = tf.add(col_pat, -1, name='col_pat_neg_one')
+
+            zeros_mat = tf.zeros_like(cur_inhib_cols_row, dtype=tf.int32, name='zeros_mat')
+            ones_mat = tf.ones_like(cur_inhib_cols_row, dtype=tf.int32, name='ones_mat')
+
+            test_meInhib = tf.where(tf.equal(cur_inhib_cols_row, 1), zeros_mat, ones_mat, name='test_meInhib')
+            indicies = tf.stack([tf.maximum(col_pat_neg_one, zeros_mat), col_num2], axis=-1)
+            set_winners = tf.gather_nd(act_cols, indicies, name='set_winners')
+
+            # Get the values at the non negative indicies. We get the value at index zero for the negative indicies.
+            # These are not used.
+            cur_inhib_col_pat = tf.gather(cur_inhib_cols4, tf.maximum(col_pat_neg_one, zeros_mat),
+                                          name='cur_inhib_col_pat')
+
+            check_colNotInhib = tf.where(tf.less(cur_inhib_col_pat, ones_mat), set_winners, test_meInhib,
+                                         name='check_colNotInhib')
+            check_colNotPad = tf.where(tf.greater(col_pat_neg_one, zeros_mat), check_colNotInhib, zeros_mat)
+
+            colwinners = check_colNotPad
+
+        # Now calculate which columns won enough of their colwinners list.
+        # This creates a vector telling us which columns have the highest
+        # overlap values and should be active.
+        # The rows that have more then or equal to
+        # the input nonPaddingSumVect. If this is true then set
+        # in the output vector the col this row represents as active.
+        # This function calculates if a column beat all the other non inhibited
+        # columns in the convole overlap groups.
+        with tf.name_scope('get_activeColVect'):
+            # Make sure the self.nonPaddingSumVect is greater than zero.
+            zeros_vec = tf.zeros_like(self.nonPaddingSumVect, dtype=tf.int32, name='zeros_vec')
+            w_cols = tf.reduce_sum(colwinners, axis=1)
+            test_lcol = tf.cast(tf.greater_equal(w_cols, self.nonPaddingSumVect), tf.int32, name='test_meInhib')
+            test_meInhib = tf.where(tf.greater(self.nonPaddingSumVect, 0), test_lcol, zeros_vec, name='test_meInhib')
+            # If the column has a zero overlap value (ie its overlap value
+            # plus the tiebreaker is less then one then do not allow it to be active.
+            activeColumnVect = tf.where(tf.less(colOverlapVect, 1), zeros_vec, test_meInhib)
+
+        return activeColumnVect
+
+    def calculateInhibCols(self, activeColumnVect, colOverlapVect):
+        # Now calculate a list of inhibited columns.
+        # Create a vector one element for each col. 1 means the col has
+        # been inhibited.
+
+        # Calculates which columns convole group contains columns that
+        # have too many active columns in their convole groups.
+        # Do not include columns that are active.
+        # If a column A finds that it contains active column B then check the
+        # convole group of B. If B contains in its convole group the number
+        # of desired local activities then the original column A should be inhibited.
+
+        # Calculate which columns in a columns convole inhib list are active.
+        # A Matrix is returned where each row stores a list of
+        # ones or zeros indicating which columns in a columns convole
+        # group are active.
+        with tf.name_scope('get_actColsInCon'):
+            actColsVect = activeColumnVect
+            colConvolePatInd = tf.constant(self.colConvolePatternIndex, dtype=tf.int32, name='colConvolePatternIndex')
+
+            zeros_mat = tf.zeros_like(colConvolePatInd, dtype=tf.int32, name='zeros_mat')
+
+            col_convolePatInd_negone = tf.add(colConvolePatInd, -1)
+            check_rCols = tf.gather(actColsVect, tf.maximum(col_convolePatInd_negone, zeros_mat), name='check_rCols')
+
+            actColsInCon = tf.where(tf.greater(colConvolePatInd, 0), check_rCols, zeros_mat)
+
+            numActColsInConVect = tf.reduce_sum(actColsInCon, 1)
+
+        # Calculate whether the active column in the columns convole list contains
+        # the desired local activity number of active columns in its
+        # convole list. This function returns a matrix where each
+        # row stores a list of ones or zeros indicating which
+        # columns in a columns convole group contain the desired number
+        # of active columns.
+        with tf.name_scope('check_actColsCon'):
+            ones_mat = tf.ones_like(colConvolePatInd, dtype=tf.int32, name='zeros_mat')
+            get_colsInVect = tf.gather(numActColsInConVect, tf.maximum(col_convolePatInd_negone, zeros_mat), name='check_rCols')
+
+            get_colsConPat = tf.where(tf.greater_equal(get_colsInVect, self.desiredLocalActivity), ones_mat, zeros_mat)
+            check_colsConPat = tf.where(tf.greater(actColsInCon, 0), get_colsConPat, zeros_mat)
+
+            inhibitedColsConMat = check_colsConPat
+
+        # Calculate the sum of the rows for the non active columns.
+        # An input matrix elements represent the columns convole
+        # lists where each column in the list is one if that columns
+        # convole list also contains the desired local activity number of
+        # active columns. The other input vector is a list of the active columns.
+        with tf.name_scope('sum_nonActColsRows'):
+            zeros_vec = tf.zeros_like(activeColumnVect, dtype=tf.int32, name='zeros_vec')
+            get_rowSum = tf.reduce_sum(inhibitedColsConMat, 1)
+            check_colAct = tf.where(tf.greater(actColsVect, 0), zeros_vec, get_rowSum)
+
+            inhibitedColsVect = check_colAct
+        # A column should also be inhibited if it is in an active columns convole
+        # group and that active column already contains the desired local activity
+        # number of active columns.
+        # If column A is active, it contains column B in its convole group and
+        # it already contains the desired local activity number of active columns
+        # in its convole group then inhibit column B. This check must be done because
+        # sometimes sizes of the potential width and height mean that column B
+        # can be in columns A convole group but column A is not in columns B's.
+
+        # For the active columns if their convole list contains
+        # the desired local activity number of active columns then
+        # inhibit the remaining unactive cols in the convole list.
+        # This function returns a matrix where each
+        # row stores a list of ones or zeros indicating which
+        # columns in a columns convole group should be inhibited.
+        with tf.name_scope('inhibit_actColsCon'):
+            colInConvoleList_negone = tf.add(self.colInConvoleList, -1)
+            colin_numActColsInConVect = tf.gather(numActColsInConVect, tf.maximum(colInConvoleList_negone, zeros_mat))
+
+            check_numActCols = tf.where(tf.greater_equal(colin_numActColsInConVect, self.desiredLocalActivity),
+                                        ones_mat, zeros_mat)
+            colin_actColVect = tf.gather(actColsVect, tf.maximum(colInConvoleList_negone, zeros_mat))
+            check_colIndAct = tf.where(tf.greater(colin_actColVect, 0), check_numActCols, zeros_mat)
+
+            get_rowActiveColumnVect = tf.gather(actColsVect, self.row_numMat)
+            check_colsRowInAct = tf.where(tf.greater(get_rowActiveColumnVect, 0), zeros_mat, check_colIndAct)
+            check_gtZero = tf.where(tf.greater(self.colInConvoleList, 0), check_colsRowInAct, zeros_mat)
+
+            inhibitedColsConMat2 = check_gtZero
+
+        # Now also calculate which columns convole groups contain too
+        # many active cols and should therfore be inhibited.
+        # If the column is active do not include it.
+        with tf.name_scope('inhibited_ColsVect'):
+            ones_vec = tf.ones_like(activeColumnVect, dtype=tf.int32, name='ones_vec')
+            inhibitedColsVect2 = tf.reduce_sum(inhibitedColsConMat2, 1)
+            # Calculate the input columns vector where the active columns
+            # in the input vector have been set to zero.
+            numActColsInConVect3 = tf.where(tf.greater(actColsVect, 0), zeros_vec, numActColsInConVect)
+            # Calculate if an input vector is larger then a scalar (element wise).
+            inhibitedColsVect3 = tf.where(tf.greater(numActColsInConVect3, self.desiredLocalActivity), ones_vec, zeros_vec)
+            # All three inhibitedColsVect vectors indicate that the column should be inhibited.
+            # Add them together to find the total inhibited columns.
+            inhibColsVector1 = tf.add(inhibitedColsVect, inhibitedColsVect2)
+            inhibColsVector2 = tf.add(inhibColsVector1, inhibitedColsVect3)
+            # Now see which columns appeared in either list of inhibited columns
+            gt_zeroVect = tf.cast(tf.greater(inhibColsVector2, 0), tf.int32)
+            # If the column has a zero overlap value (ie its overlap value
+            # plus the tiebreaker is less then one then inhibit the column.
+            inhibCols = tf.where(tf.less(colOverlapVect, 1), ones_vec, gt_zeroVect)
+
+        with tf.name_scope('get_notInhibOrActNum'):
+            # Sum the InhibCols vector and compare to the number of cols
+            # If equal then all columns have been inhibited or are active.
+            tf_width = tf.constant(self.width, dtype=tf.int32, name='width')
+            tf_height = tf.constant(self.height, dtype=tf.int32, name='height')
+            red_inhibCols = tf.reduce_sum(inhibCols, 0)
+            red_actColVect = tf.reduce_sum(actColsVect, 0)
+            # Calculate the number of columsn that are not active and are not inhibited.
+            # This number will be zero when the
+            notInhibOrActNum = tf_width * tf_height - red_inhibCols - red_actColVect
+
+        return inhibCols, notInhibOrActNum
+
+    def body(self, inhibCols, notInhibOrActNum, activeColumnVect):
+        # A function that is run in a tensorflow while loop
+
+        # print("inhibCols = \n%s" % inhibCols)
+
+        colOverlapMat = self.checkInhibCols(self.colOverlapMatOrig,
+                                            self.colConvolePatternIndex,
+                                            inhibCols)
+        activeCols_new = self.calculateActiveCol(colOverlapMat)
+        activeColumnVect_new = self.calculateActiveColumnVect(activeCols_new,
+                                                              inhibCols,
+                                                              self.colOverlapVect)
+        inhibCols, notInhibOrActNum = self.calculateInhibCols(activeColumnVect_new,
+                                                              self.colOverlapVect)
+
+        return inhibCols, notInhibOrActNum, activeColumnVect_new
+
+    def condition(self, inhibCols, notInhibOrActNum, activeColumnVect):
+        # The condition to end the while loop.
+        # This must return false for the while loop to end.
+        # The calculation is complete when all columns are either inhbited or are active.
+
+        # SHOULD BE THIS return notInhibOrActNum > 0
+        #return notInhibOrActNum > 0
+        return notInhibOrActNum < 1
+
+    def calculateWinningCols(self, overlapsGrid=None):
+        # Take the overlapsGrid and calculate a binary list
+        # describing the active columns ( 1 is active, 0 not active).
+
+        # Run the Graph
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+
+            # Merge all the summaries into one tensorflow operation
+            merge = tf.summary.merge_all()
+
+            if overlapsGrid is not None:
+                inhibitedCols, notInhibOrActNum = sess.run([self.inhibColsFinal_print, self.notInhibOrActNumFinal],
+                                                           feed_dict={self.colOverlapsGrid: overlapsGrid})
+            else:
+                inhibitedCols, notInhibOrActNum = sess.run([self.inhibColsFinal, self.notInhibOrActNumFinal])
+
+            self.summary_writer = tf.summary.FileWriter(self.logsPath, graph=tf.get_default_graph())
+
+            # print("tf_activeColumns = \n%s" % tf_activeColumns)
+            # print("inhibitedCols = \n%s" % inhibitedCols)
+            print("inhibitedCols, notInhibOrActNum = %s, %s" % (inhibitedCols, notInhibOrActNum))
+
+            print("\nRun the command line:\n"
+                  "--> tensorboard --logdir=/tmp/tensorflow_logs "
+                  "\nThen open http://0.0.0.0:6006/ into your web browser")
+
+        # activeColumnVect = tf_activeColumns
+
+        return inhibitedCols
 
 if __name__ == '__main__':
 
@@ -464,12 +752,16 @@ if __name__ == '__main__':
     minOverlap = 1
 
     # Some made up inputs to test with
-    #colOverlapGrid = np.random.randint(1, size=(numRows, numCols))
-    colOverlapGrid = np.array([[8, 4, 5, 8],
-                               [8, 6, 1, 6],
-                               [7, 7, 9, 4],
-                               [2, 3, 1, 5]])
-    print "colOverlapGrid = \n%s" % colOverlapGrid
+    #colOverlapsGrid = np.random.randint(1, size=(numRows, numCols))
+    # colOverlapsGrid = np.array([[8, 4, 5, 8],
+    #                            [8, 6, 1, 6],
+    #                            [7, 7, 9, 4],
+    #                            [2, 3, 1, 5]])
+    colOverlapsGrid = np.array([[9, 0, 0, 0],
+                               [0, 0, 0, 0],
+                               [0, 0, 9, 0],
+                               [0, 0, 0, 0]])
+    print("colOverlapsGrid = \n%s" % colOverlapsGrid)
 
     inhibCalculator = inhibitionCalculator(numCols, numRows,
                                            potWidth, potHeight,
@@ -477,11 +769,11 @@ if __name__ == '__main__':
                                            minOverlap,
                                            centerInhib)
 
-    #cProfile.runctx('activeColumns = inhibCalculator.calculateWinningCols(colOverlapGrid)', globals(), locals())
-    #activeColumns = inhibCalculator.calculateWinningCols(colOverlapGrid)
+    #cProfile.runctx('activeColumns = inhibCalculator.calculateWinningCols(colOverlapsGrid)', globals(), locals())
+    activeColumns = inhibCalculator.calculateWinningCols(colOverlapsGrid)
 
     #activeColumns = activeColumns.reshape((numRows, numCols))
-    #print "colOverlapGrid = \n%s" % colOverlapGrid
+    #print "colOverlapsGrid = \n%s" % colOverlapGrid
     #print "activeColumns = \n%s" % activeColumns
 
 

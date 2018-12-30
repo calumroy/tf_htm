@@ -1,3 +1,4 @@
+from __future__ import print_function
 import tensorflow as tf
 import numpy as np
 from numpy import array, arange, ix_
@@ -142,16 +143,64 @@ def calculateTfActiveCol(colOverlapMat):
         # Use a print node in the graph. The first input is the input data to pass to this node,
         # the second is an array of which nodes in the graph you would like to print
         # pr_mult = tf.Print(mult_y, [mult_y, newGrid], summarize = 25)
-        pr_mult = tf.Print(activeCols,
-                           [minLocalActExpand, indicies, sortedColOverlapMat],
-                           message="Print", summarize=200)
+        print_out = tf.print(
+                             "\n minLocalActExpand = \n", minLocalActExpand,
+                             "\n indicies = \n", indicies,
+                             "\n sortedColOverlapMat = \n", sortedColOverlapMat,
+                             "\n activeCols = \n",
+                             summarize=200)
 
-    print("activeCols = \n%s" % activeCols)
+    # Make sure the print_out is performed during the graph execution.
+    with tf.control_dependencies([print_out]):
+        # Perform some tf operation so the print out occurs.
+        activeColsFinal = tf.multiply(activeCols, 1)
 
-    return pr_mult
+    #print("activeCols = \n%s" % activeCols)
+
+    return activeColsFinal
 
 
-colOverlapMat = np.random.randint(10, size=(9, 4))
+# self.colConvolePatternIndex =
+# array([[ 0,  0,  0,  0,  1,  2,  0,  5,  6],
+#        [ 0,  0,  0,  1,  2,  3,  5,  6,  7],
+#        [ 0,  0,  0,  2,  3,  4,  6,  7,  8],
+#        [ 0,  0,  0,  3,  4,  0,  7,  8,  0],
+#        [ 0,  1,  2,  0,  5,  6,  0,  9, 10],
+#        [ 1,  2,  3,  5,  6,  7,  9, 10, 11],
+#        [ 2,  3,  4,  6,  7,  8, 10, 11, 12],
+#        [ 3,  4,  0,  7,  8,  0, 11, 12,  0],
+#        [ 0,  5,  6,  0,  9, 10,  0, 13, 14],
+#        [ 5,  6,  7,  9, 10, 11, 13, 14, 15],
+#        [ 6,  7,  8, 10, 11, 12, 14, 15, 16],
+#        [ 7,  8,  0, 11, 12,  0, 15, 16,  0],
+#        [ 0,  9, 10,  0, 13, 14,  0,  0,  0],
+#        [ 9, 10, 11, 13, 14, 15,  0,  0,  0],
+#        [10, 11, 12, 14, 15, 16,  0,  0,  0],
+#        [11, 12,  0, 15, 16,  0,  0,  0,  0]])
+
+
+#colOverlapMat = np.random.randint(10, size=(9, 4))
+
+colOverlapMat = np.array(
+ [[0, 0, 0, 0, 9.05882359, 0.117647059, 0, 0.294117659, 0.352941185],
+ [0, 0, 0, 9.05882359, 0.117647059, 0.176470593, 0.294117659, 0.352941185, 0.411764711],
+ [0, 0, 0, 0.117647059, 0.176470593, 0.235294119, 0.352941185, 0.411764711, 0.470588237],
+ [0, 0, 0, 0.176470593, 0.235294119, 0, 0.411764711, 0.470588237, 0],
+ [0, 9.05882359, 0.117647059, 0, 0.294117659, 0.352941185, 0, 0.529411793, 0.588235319],
+ [9.05882359, 0.117647059, 0.176470593, 0.294117659, 0.352941185, 0.411764711, 0.529411793, 0.588235319, 9.64705849],
+ [0.117647059, 0.176470593, 0.235294119, 0.352941185, 0.411764711, 0.470588237, 0.588235319, 9.64705849, 0.70588237],
+ [0.176470593, 0.235294119, 0, 0.411764711, 0.470588237, 0, 9.64705849, 0.70588237, 0],
+ [0, 0.294117659, 0.352941185, 0, 0.529411793, 0.588235319, 0, 0.764705896, 0.823529422],
+ [0.294117659, 0.352941185, 0.411764711, 0.529411793, 0.588235319, 9.64705849, 0.764705896, 0.823529422, 0.882352948],
+ [0.352941185, 0.411764711, 0.470588237, 0.588235319, 9.64705849, 0.70588237, 0.823529422, 0.882352948, 0.941176474],
+ [0.411764711, 0.470588237, 0, 9.64705849, 0.70588237, 0, 0.882352948, 0.941176474, 0],
+ [0, 0.529411793, 0.588235319, 0, 0.764705896, 0.823529422, 0, 0, 0],
+ [0.529411793, 0.588235319, 9.64705849, 0.764705896, 0.823529422, 0.882352948, 0, 0, 0],
+ [0.588235319, 9.64705849, 0.70588237, 0.823529422, 0.882352948, 0.941176474, 0, 0, 0],
+ [9.64705849, 0.70588237, 0, 0.882352948, 0.941176474, 0, 0, 0, 0]])
+
+
+
 print("colOverlapMat = \n%s" % colOverlapMat)
 
 activeCol = calculateTfActiveCol(colOverlapMat)

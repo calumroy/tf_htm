@@ -187,26 +187,36 @@ class inhibitionCalculator():
                 with tf.name_scope('getInhibColsVect'):
                     self.inhibCols, self.notInhibOrActNum = self.calculateInhibCols(self.activeColumnVect, self.colOverlapVect)
 
-
                 # Run the while loop which keeps calucalting until notInhibOrActNumFinal = 0
                 with tf.name_scope('whileLoop'):
+                    self.globalStep = tf.Variable(0, trainable=False)
                     (self.inhibColsFinal,
-                        self.notInhibOrActNumFinal,
-                        self.activeColumnVectFinal) = tf.while_loop(self.condition, self.body,
-                                                                    [self.inhibCols,
-                                                                     self.notInhibOrActNum,
-                                                                     self.activeColumnVect],
-                                                                    back_prop=False)
+                     self.notInhibOrActNumFinal,
+                     self.activeColumnVectFinal,
+                     self.globalStepFinal) = tf.while_loop(self.condition, self.body,
+                                                           [self.inhibCols,
+                                                            self.notInhibOrActNum,
+                                                            self.activeColumnVect,
+                                                            self.globalStep],
+                                                           back_prop=False)
                 # Print the output.
                 with tf.name_scope('print'):
                     # Use a print node in the graph. The first input is the input data to pass to this node,
                     # the second is an array of which nodes in the graph you would like to print
                     # pr_mult = tf.Print(mult_y, [mult_y, newGrid], summarize = 25)
                     self.print_out = tf.print("\n Printing Tensors \n"
+                                              "\n self.colOverlapMatOrig = \n", self.colOverlapMatOrig,
+                                              "\n self.activeCols = \n", self.activeCols,
+                                              "\n self.inhibColsZeros = \n", self.inhibColsZeros,
+                                              "\n self.colOverlapVect = ", self.colOverlapVect,
+                                              "\n self.colConvolePatternIndex = ", self.colConvolePatternIndex,
+                                              "\n self.colInConvoleList = ", self.colInConvoleList,
                                               "\n self.inhibCols = ", self.inhibCols,
                                               "\n self.notInhibOrActNum = ", self.notInhibOrActNum,
                                               "\n self.activeColumnVect = ", self.activeColumnVect,
+                                              "\n self.inhibColsFinal = ", self.inhibColsFinal,
                                               "\n self.activeColumnVectFinal = ", self.activeColumnVectFinal,
+                                              "\n self.globalStepFinal = ", self.globalStepFinal,
                                               summarize=200)
 
                 # Make sure the print_out is performed during the graph execution.
@@ -541,7 +551,7 @@ class inhibitionCalculator():
 
             check_colNotInhib = tf.where(tf.less(cur_inhib_col_pat, ones_mat), set_winners, test_meInhib,
                                          name='check_colNotInhib')
-            check_colNotPad = tf.where(tf.greater(col_pat_neg_one, zeros_mat), check_colNotInhib, zeros_mat)
+            check_colNotPad = tf.where(tf.greater_equal(col_pat_neg_one, zeros_mat), check_colNotInhib, zeros_mat)
 
             colwinners = check_colNotPad
 
@@ -684,10 +694,12 @@ class inhibitionCalculator():
 
         return inhibCols, notInhibOrActNum
 
-    def body(self, inhibCols, notInhibOrActNum, activeColumnVect):
+    def body(self, inhibCols, notInhibOrActNum, activeColumnVect, iteration):
         # A function that is run in a tensorflow while loop
 
         # print("inhibCols = \n%s" % inhibCols)
+
+        add_iteration = tf.add(iteration, 1)
 
         colOverlapMat = self.checkInhibCols(self.colOverlapMatOrig,
                                             self.colConvolePatternIndex,
@@ -699,16 +711,16 @@ class inhibitionCalculator():
         inhibCols, notInhibOrActNum = self.calculateInhibCols(activeColumnVect_new,
                                                               self.colOverlapVect)
 
-        return inhibCols, notInhibOrActNum, activeColumnVect_new
+        return inhibCols, notInhibOrActNum, activeColumnVect_new, add_iteration
 
-    def condition(self, inhibCols, notInhibOrActNum, activeColumnVect):
+    def condition(self, inhibCols, notInhibOrActNum, activeColumnVect, iteration):
         # The condition to end the while loop.
         # This must return false for the while loop to end.
         # The calculation is complete when all columns are either inhbited or are active.
 
         # SHOULD BE THIS return notInhibOrActNum > 0
-        #return notInhibOrActNum > 0
-        return notInhibOrActNum < 1
+        return notInhibOrActNum > 0
+        #return iteration < 10
 
     def calculateWinningCols(self, overlapsGrid=None):
         # Take the overlapsGrid and calculate a binary list

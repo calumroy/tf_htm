@@ -55,6 +55,13 @@ if __name__ == '__main__':
 
     x = tf.Variable(tf.constant(0, shape=[2, 2]))
     y = tf.Variable(tf.constant(0, shape=[2, 2]))
+    # x = tf.zeros(shape=[2, 2], dtype=tf.int32)
+    # y = tf.zeros(shape=[2, 2], dtype=tf.int32)
+    # x = tf.convert_to_tensor([[0, 0], [0, 0]], dtype=tf.int32)
+    # y = tf.convert_to_tensor([[0, 0], [0, 0]], dtype=tf.int32)
+    # x = tf.constant(0, shape=[2, 2])
+    # y = tf.constant(0, shape=[2, 2])
+
     run_tf(x, y)
 
 

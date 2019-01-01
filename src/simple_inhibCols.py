@@ -78,7 +78,8 @@ def calculateInhibCols(activeColumnVect, colOverlapVect):
     # row stores a list of ones or zeros indicating which
     # columns in a columns convole group will be inhibited.
     with tf.name_scope('inhibit_actColsCon'):
-        colInConvoleList_negone = tf.add(colInConvoleList, -1)
+        colInConvoleListTf = tf.convert_to_tensor(colInConvoleList, dtype=tf.int32, name='colInConvoleListTf')
+        colInConvoleList_negone = tf.add(colInConvoleListTf, -1)
         colin_numActColsInConVect = tf.gather(numActColsInConVect, tf.maximum(colInConvoleList_negone, zeros_mat))
 
         check_numActCols = tf.where(tf.greater_equal(colin_numActColsInConVect, desiredLocalActivity), ones_mat, zeros_mat)
@@ -88,7 +89,7 @@ def calculateInhibCols(activeColumnVect, colOverlapVect):
 
         get_rowActiveColumnVect = tf.gather(actColsVect, row_numMat)
         check_colsRowInAct = tf.where(tf.greater(get_rowActiveColumnVect, 0), zeros_mat, check_colIndAct)
-        check_gtZero = tf.where(tf.greater(colInConvoleList, 0), check_colsRowInAct, zeros_mat)
+        check_gtZero = tf.where(tf.greater(colInConvoleListTf, 0), check_colsRowInAct, zeros_mat)
 
         inhibitedColsConMat2 = check_gtZero
 
@@ -130,7 +131,8 @@ def calculateInhibCols(activeColumnVect, colOverlapVect):
         # Use a print node in the graph. The first input is the input data to pass to this node,
         # the second is an array of which nodes in the graph you would like to print
         # pr_mult = tf.Print(mult_y, [mult_y, newGrid], summarize = 25)
-        print_out = tf.print("\n actColsVect = ", actColsVect,
+        print_out = tf.print("\n colInConvoleList_negone = \n", colInConvoleList_negone,
+                             "\n actColsVect = ", actColsVect,
                              "\n actColsInCon = \n", actColsInCon,
                              "\n numActColsInConVect = ", numActColsInConVect,
                              "\n colin_numActColsInConVect = \n", colin_numActColsInConVect,
@@ -167,32 +169,68 @@ def calculateInhibCols(activeColumnVect, colOverlapVect):
     return inhibCols, print_out
 
 
-colConvolePatternIndex = (
-                    [[0, 0, 0, 1],
-                     [0, 0, 1, 2],
-                     [0, 0, 2, 3],
-                     [0, 1, 0, 4],
-                     [1, 2, 4, 5],
-                     [2, 3, 5, 6],
-                     [0, 4, 0, 7],
-                     [4, 5, 7, 8],
-                     [5, 6, 8, 9]])
+# colConvolePatternIndex = (
+#                     [[0, 0, 0, 1],
+#                      [0, 0, 1, 2],
+#                      [0, 0, 2, 3],
+#                      [0, 1, 0, 4],
+#                      [1, 2, 4, 5],
+#                      [2, 3, 5, 6],
+#                      [0, 4, 0, 7],
+#                      [4, 5, 7, 8],
+#                      [5, 6, 8, 9]])
 
-colInConvoleList = (
-                    [[5, 4, 2, 1],
-                     [6, 5, 3, 2],
-                     [0, 6, 0, 3],
-                     [8, 7, 5, 4],
-                     [9, 8, 6, 5],
-                     [0, 9, 0, 6],
-                     [0, 0, 8, 7],
-                     [0, 0, 9, 8],
-                     [0, 0, 0, 9]])
+# colInConvoleList = (
+#                     [[5, 4, 2, 1],
+#                      [6, 5, 3, 2],
+#                      [0, 6, 0, 3],
+#                      [8, 7, 5, 4],
+#                      [9, 8, 6, 5],
+#                      [0, 9, 0, 6],
+#                      [0, 0, 8, 7],
+#                      [0, 0, 9, 8],
+#                      [0, 0, 0, 9]])
 
-potentialWidth = 2
-potentialHeight = 2
-width = 3
-height = 3
+colConvolePatternIndex =  array([[ 0,  0,  0,  0,  1,  2,  0,  5,  6],
+                                 [ 0,  0,  0,  1,  2,  3,  5,  6,  7],
+                                 [ 0,  0,  0,  2,  3,  4,  6,  7,  8],
+                                 [ 0,  0,  0,  3,  4,  0,  7,  8,  0],
+                                 [ 0,  1,  2,  0,  5,  6,  0,  9, 10],
+                                 [ 1,  2,  3,  5,  6,  7,  9, 10, 11],
+                                 [ 2,  3,  4,  6,  7,  8, 10, 11, 12],
+                                 [ 3,  4,  0,  7,  8,  0, 11, 12,  0],
+                                 [ 0,  5,  6,  0,  9, 10,  0, 13, 14],
+                                 [ 5,  6,  7,  9, 10, 11, 13, 14, 15],
+                                 [ 6,  7,  8, 10, 11, 12, 14, 15, 16],
+                                 [ 7,  8,  0, 11, 12,  0, 15, 16,  0],
+                                 [ 0,  9, 10,  0, 13, 14,  0,  0,  0],
+                                 [ 9, 10, 11, 13, 14, 15,  0,  0,  0],
+                                 [10, 11, 12, 14, 15, 16,  0,  0,  0],
+                                 [11, 12,  0, 15, 16,  0,  0,  0,  0]])
+
+colInConvoleList =  array([[ 6,  5,  0,  2,  1,  0,  0,  0,  0],
+       [ 7,  6,  5,  3,  2,  1,  0,  0,  0],
+       [ 8,  7,  6,  4,  3,  2,  0,  0,  0],
+       [ 0,  8,  7,  0,  4,  3,  0,  0,  0],
+       [10,  9,  0,  6,  5,  0,  2,  1,  0],
+       [11, 10,  9,  7,  6,  5,  3,  2,  1],
+       [12, 11, 10,  8,  7,  6,  4,  3,  2],
+       [ 0, 12, 11,  0,  8,  7,  0,  4,  3],
+       [14, 13,  0, 10,  9,  0,  6,  5,  0],
+       [15, 14, 13, 11, 10,  9,  7,  6,  5],
+       [16, 15, 14, 12, 11, 10,  8,  7,  6],
+       [ 0, 16, 15,  0, 12, 11,  0,  8,  7],
+       [ 0,  0,  0, 14, 13,  0, 10,  9,  0],
+       [ 0,  0,  0, 15, 14, 13, 11, 10,  9],
+       [ 0,  0,  0, 16, 15, 14, 12, 11, 10],
+       [ 0,  0,  0,  0, 16, 15,  0, 12, 11]])
+
+
+
+potentialWidth = 3
+potentialHeight = 3
+width = 4
+height = 4
 desiredLocalActivity = 2
 
 # Create a matrix that just holds the row number for each element
@@ -201,18 +239,34 @@ row_numMat = np.array([[j for i in range(potentialWidth*potentialHeight)]
 
 print("row_numMat = \n%s" % row_numMat)
 
-activeColVect = np.array([0, 0, 1, 0, 1, 0, 0, 1, 1])
+#activeColVect = np.array([0, 0, 1, 0, 1, 0, 0, 1, 1])
+activeColVect =  np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0])
+
+
 print("activeColVect = \n%s" % activeColVect)
 
+# colOverlapMat = np.array(
+#                          [[8, 8, 8],
+#                           [0, 9, 0],
+#                           [0, 9, 8]])
 colOverlapMat = np.array(
-                         [[8, 8, 8],
-                          [0, 9, 0],
-                          [0, 9, 8]])
+                [[8, 4, 5, 8],
+                 [8, 6, 1, 6],
+                 [7, 7, 9, 4],
+                 [2, 3, 1, 5]])
+
+
 print("colOverlapMat = \n%s" % colOverlapMat)
 
-tieBreaker = ([[0.1, 0.2, 0.3],
-              [0.4, 0.5, 0.6],
-              [0.7, 0.8, 0.9]])
+# tieBreaker = ([[0.1, 0.2, 0.3],
+#               [0.4, 0.5, 0.6],
+#               [0.7, 0.8, 0.9]])
+
+tieBreaker = np.array(
+                    [[0.05882353, 0.11764706, 0.17647059, 0.23529412],
+                     [0.29411765, 0.35294118, 0.41176471, 0.47058824],
+                     [0.52941176, 0.58823529, 0.64705882, 0.70588235],
+                     [0.76470588, 0.82352941, 0.88235294, 0.94117647]])
 
 overlapsGridTie = colOverlapMat + tieBreaker
 # Create a vector of the overlap values for each column

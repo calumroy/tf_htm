@@ -33,7 +33,7 @@ def get_minLocAct(minOverlapIndex, sortedColOverlapMat, row_numVect):
 
 def get_activeCol(colOverlapMat, minLocalAct):
     # np.greater(colOverlapMat, minLocalAct)
-    outMat = (colOverlapMat > minLocalAct)
+    outMat = (colOverlapMat >= minLocalAct)
     outMat = array(outMat > 0, dtype=int)
 
     # print("outMat = \n%s" % outMat)
@@ -110,10 +110,10 @@ def calculateTfActiveCol(colOverlapMat):
 
     # print("sortedColOverlapMat = \n%s" % sortedColOverlapMat)
 
-    # Get the minLocalActivity for each col.
+    # Get the minLocalActivity number for each col.
     colIndicies = tf.subtract(numInhib, minOverlapIndex)
-    print("rowNumVect = \n%s" % rowNumVect)
-    print("colIndicies = \n%s" % colIndicies)
+    # print("rowNumVect = \n%s" % rowNumVect)
+    # print("colIndicies = \n%s" % colIndicies)
 
     indicies = tf.stack([rowNumVect, colIndicies], axis=-1)
     minLocalAct = tf.gather_nd(sortedColOverlapMat, indicies)
@@ -123,7 +123,7 @@ def calculateTfActiveCol(colOverlapMat):
 
     # print("sortedColOverlapMat = \n%s" % sortedColOverlapMat)
     # print("minLocalAct.shape = \n%s" % minLocalAct.shape)
-    print("minLocalAct = \n%s" % minLocalAct)
+    # print("minLocalAct = \n%s" % minLocalAct)
 
     # Now calculate for each columns list of overlap values, which ones are larger
     # then the minLocalActivity number.
@@ -131,9 +131,9 @@ def calculateTfActiveCol(colOverlapMat):
     # This is acheived by adding an extra empty dimension to the minLocalAct then broadcasting
     expMinLocalAct = tf.expand_dims(minLocalAct, 1)
     bdim = [numCols, numInhib]
-    print("bdim = " , bdim)
+    # print("bdim = " , bdim)
     minLocalActExpand = tf.broadcast_to(expMinLocalAct, bdim)
-    activeColsTemp = tf.cast(tf.greater(colOverlapMat, minLocalActExpand),
+    activeColsTemp = tf.cast(tf.greater_equal(colOverlapMat, minLocalActExpand),
                              tf.float32)
     activeCols = tf.cast(tf.greater(activeColsTemp, 0),
                          tf.float32)
@@ -143,10 +143,17 @@ def calculateTfActiveCol(colOverlapMat):
         # Use a print node in the graph. The first input is the input data to pass to this node,
         # the second is an array of which nodes in the graph you would like to print
         # pr_mult = tf.Print(mult_y, [mult_y, newGrid], summarize = 25)
-        print_out = tf.print(
-                             "\n minLocalActExpand = \n", minLocalActExpand,
+        print_out = tf.print("\n Printing Tensors \n",
+                             "\n minOverlapIndex = \n", minOverlapIndex,
+                             "\n numInhib = \n", numInhib,
+                             "\n rowNumVect = \n", rowNumVect,
+                             "\n colIndicies = \n", colIndicies,
                              "\n indicies = \n", indicies,
                              "\n sortedColOverlapMat = \n", sortedColOverlapMat,
+                             "\n minLocalAct = \n", minLocalAct,
+                             "\n colOverlapMat = \n", colOverlapMat,
+                             "\n minLocalActExpand = \n", minLocalActExpand,
+                             "\n activeColsTemp = \n", activeColsTemp,
                              "\n activeCols = \n",
                              summarize=200)
 
@@ -181,23 +188,42 @@ def calculateTfActiveCol(colOverlapMat):
 
 #colOverlapMat = np.random.randint(10, size=(9, 4))
 
+# colOverlapMat = np.array(
+#  [[0, 0, 0, 0, 9.05882359, 0.117647059, 0, 0.294117659, 0.352941185],
+#  [0, 0, 0, 9.05882359, 0.117647059, 0.176470593, 0.294117659, 0.352941185, 0.411764711],
+#  [0, 0, 0, 0.117647059, 0.176470593, 0.235294119, 0.352941185, 0.411764711, 0.470588237],
+#  [0, 0, 0, 0.176470593, 0.235294119, 0, 0.411764711, 0.470588237, 0],
+#  [0, 9.05882359, 0.117647059, 0, 0.294117659, 0.352941185, 0, 0.529411793, 0.588235319],
+#  [9.05882359, 0.117647059, 0.176470593, 0.294117659, 0.352941185, 0.411764711, 0.529411793, 0.588235319, 9.64705849],
+#  [0.117647059, 0.176470593, 0.235294119, 0.352941185, 0.411764711, 0.470588237, 0.588235319, 9.64705849, 0.70588237],
+#  [0.176470593, 0.235294119, 0, 0.411764711, 0.470588237, 0, 9.64705849, 0.70588237, 0],
+#  [0, 0.294117659, 0.352941185, 0, 0.529411793, 0.588235319, 0, 0.764705896, 0.823529422],
+#  [0.294117659, 0.352941185, 0.411764711, 0.529411793, 0.588235319, 9.64705849, 0.764705896, 0.823529422, 0.882352948],
+#  [0.352941185, 0.411764711, 0.470588237, 0.588235319, 9.64705849, 0.70588237, 0.823529422, 0.882352948, 0.941176474],
+#  [0.411764711, 0.470588237, 0, 9.64705849, 0.70588237, 0, 0.882352948, 0.941176474, 0],
+#  [0, 0.529411793, 0.588235319, 0, 0.764705896, 0.823529422, 0, 0, 0],
+#  [0.529411793, 0.588235319, 9.64705849, 0.764705896, 0.823529422, 0.882352948, 0, 0, 0],
+#  [0.588235319, 9.64705849, 0.70588237, 0.823529422, 0.882352948, 0.941176474, 0, 0, 0],
+#  [9.64705849, 0.70588237, 0, 0.882352948, 0.941176474, 0, 0, 0, 0]])
+
 colOverlapMat = np.array(
- [[0, 0, 0, 0, 9.05882359, 0.117647059, 0, 0.294117659, 0.352941185],
- [0, 0, 0, 9.05882359, 0.117647059, 0.176470593, 0.294117659, 0.352941185, 0.411764711],
- [0, 0, 0, 0.117647059, 0.176470593, 0.235294119, 0.352941185, 0.411764711, 0.470588237],
- [0, 0, 0, 0.176470593, 0.235294119, 0, 0.411764711, 0.470588237, 0],
- [0, 9.05882359, 0.117647059, 0, 0.294117659, 0.352941185, 0, 0.529411793, 0.588235319],
- [9.05882359, 0.117647059, 0.176470593, 0.294117659, 0.352941185, 0.411764711, 0.529411793, 0.588235319, 9.64705849],
- [0.117647059, 0.176470593, 0.235294119, 0.352941185, 0.411764711, 0.470588237, 0.588235319, 9.64705849, 0.70588237],
- [0.176470593, 0.235294119, 0, 0.411764711, 0.470588237, 0, 9.64705849, 0.70588237, 0],
- [0, 0.294117659, 0.352941185, 0, 0.529411793, 0.588235319, 0, 0.764705896, 0.823529422],
- [0.294117659, 0.352941185, 0.411764711, 0.529411793, 0.588235319, 9.64705849, 0.764705896, 0.823529422, 0.882352948],
- [0.352941185, 0.411764711, 0.470588237, 0.588235319, 9.64705849, 0.70588237, 0.823529422, 0.882352948, 0.941176474],
- [0.411764711, 0.470588237, 0, 9.64705849, 0.70588237, 0, 0.882352948, 0.941176474, 0],
- [0, 0.529411793, 0.588235319, 0, 0.764705896, 0.823529422, 0, 0, 0],
- [0.529411793, 0.588235319, 9.64705849, 0.764705896, 0.823529422, 0.882352948, 0, 0, 0],
- [0.588235319, 9.64705849, 0.70588237, 0.823529422, 0.882352948, 0.941176474, 0, 0, 0],
- [9.64705849, 0.70588237, 0, 0.882352948, 0.941176474, 0, 0, 0, 0]])
+ [[0, 0, 0, 0, 8.05882359, 4.11764717, 0, 8.29411793, 6.35294104],
+ [0, 0, 0, 8.05882359, 4.11764717, 5.17647076, 8.29411793, 6.35294104, 1.41176474],
+ [0, 0, 0, 4.11764717, 5.17647076, 8.23529434, 6.35294104, 1.41176474, 6.47058821],
+ [0, 0, 0, 5.17647076, 8.23529434, 0, 1.41176474, 6.47058821, 0],
+ [0, 8.05882359, 4.11764717, 0, 8.29411793, 6.35294104, 0, 7.52941179, 7.58823538],
+ [8.05882359, 4.11764717, 5.17647076, 8.29411793, 6.35294104, 1.41176474, 7.52941179, 7.58823538, 9.64705849],
+ [4.11764717, 5.17647076, 8.23529434, 6.35294104, 1.41176474, 6.47058821, 7.58823538, 9.64705849, 4.70588255],
+ [5.17647076, 8.23529434, 0, 1.41176474, 6.47058821, 0, 9.64705849, 4.70588255, 0],
+ [0, 8.29411793, 6.35294104, 0, 7.52941179, 7.58823538, 0, 2.7647059, 3.82352948],
+ [8.29411793, 6.35294104, 1.41176474, 7.52941179, 7.58823538, 9.64705849, 2.7647059, 3.82352948, 1.88235295],
+ [6.35294104, 1.41176474, 6.47058821, 7.58823538, 9.64705849, 4.70588255, 3.82352948, 1.88235295, 5.94117641],
+ [1.41176474, 6.47058821, 0, 9.64705849, 4.70588255, 0, 1.88235295, 5.94117641, 0],
+ [0, 7.52941179, 7.58823538, 0, 2.7647059, 3.82352948, 0, 0, 0],
+ [7.52941179, 7.58823538, 9.64705849, 2.7647059, 3.82352948, 1.88235295, 0, 0, 0],
+ [7.58823538, 9.64705849, 4.70588255, 3.82352948, 1.88235295, 5.94117641, 0, 0, 0],
+ [9.64705849, 4.70588255, 0, 1.88235295, 5.94117641, 0, 0, 0, 0]])
+
 
 
 
@@ -210,12 +236,13 @@ activeCol = calculateTfActiveCol(colOverlapMat)
 with tf.Session() as sess:
     print("Run Sess")
     tf_activeCol = activeCol.eval()
-    print(tf_activeCol)
+    print("numpy tf_activeCol = \n%s" % tf_activeCol)
 
 
 np_activeCol = calculateActiveCol(colOverlapMat)
 print("numpy activeCol = \n%s" % np_activeCol)
 
-# Mkae sure the numpy and tensorflow implementations are the same.
-assert(np_activeCol.all() == tf_activeCol.all())
+# Make sure the numpy and tensorflow implementations are the same.
+assert(np.array_equal(np_activeCol, tf_activeCol))
+
 

@@ -189,15 +189,15 @@ class inhibitionCalculator():
 
                 # Run the while loop which keeps calucalting until notInhibOrActNumFinal = 0
                 with tf.name_scope('whileLoop'):
-                    self.globalStep = tf.Variable(0, trainable=False)
+                    self.globalStepNum = tf.Variable(0, trainable=False, name='globalStepNum')
                     (self.inhibColsFinal,
                      self.notInhibOrActNumFinal,
                      self.activeColumnVectFinal,
-                     self.globalStepFinal) = tf.while_loop(self.condition, self.body,
+                     self.globalStepNumFinal) = tf.while_loop(self.condition, self.body,
                                                            [self.inhibCols,
                                                             self.notInhibOrActNum,
                                                             self.activeColumnVect,
-                                                            self.globalStep],
+                                                            self.globalStepNum],
                                                            back_prop=False)
                 # Print the output.
                 with tf.name_scope('print'):
@@ -216,30 +216,13 @@ class inhibitionCalculator():
                                               "\n self.activeColumnVect = ", self.activeColumnVect,
                                               "\n self.inhibColsFinal = ", self.inhibColsFinal,
                                               "\n self.activeColumnVectFinal = ", self.activeColumnVectFinal,
-                                              "\n self.globalStepFinal = ", self.globalStepFinal,
+                                              "\n self.globalStepNumFinal = ", self.globalStepNumFinal,
                                               summarize=200)
 
                 # Make sure the print_out is performed during the graph execution.
                 with tf.control_dependencies([self.print_out]):
                     # Perform some tf operation so the print out occurs.
                     self.inhibColsFinal_print = tf.multiply(self.inhibColsFinal, 1)
-
-
-                # # Print the output.
-                # with tf.name_scope('print'):
-                #     # Use a print node in the graph. The first input is the input data to pass to this node,
-                #     # the second is an array of which nodes in the graph you would like to print
-                #     # pr_mult = tf.Print(mult_y, [mult_y, newGrid], summarize = 25)
-                #     self.print_out = tf.print(self.inhibCols,
-                #                               [self.inhibCols,
-                #                                self.notInhibOrActNum,
-                #                                self.colOverlapVect,
-                #                                self.activeColumnVect],
-                #                               message="Print", summarize=200)
-
-
-
-            #self.summary_writer = tf.summary.FileWriter(self.logsPath, graph=tf.get_default_graph())
 
     def calculateConvolePattern(self, inputGrid):
         '''
@@ -506,7 +489,7 @@ class inhibitionCalculator():
             #print("expMinLocalAct \n", expMinLocalAct)
             #print("bdim \n", bdim)
             minLocalActExpand = tf.broadcast_to(expMinLocalAct, bdim, name='minLocalActExpand')
-            activeColsTemp = tf.cast(tf.greater(colOverlapMat, minLocalActExpand),
+            activeColsTemp = tf.cast(tf.greater_equal(colOverlapMat, minLocalActExpand),
                                      tf.int32)
             activeCols = tf.cast(tf.greater(activeColsTemp, 0),
                                  tf.int32)
@@ -696,8 +679,14 @@ class inhibitionCalculator():
 
     def body(self, inhibCols, notInhibOrActNum, activeColumnVect, iteration):
         # A function that is run in a tensorflow while loop
+        # This funciton continues running until the notInhibOrActNum
+        # which is the number of columns that are not (active or inhibited)
+        # equals zero. At this point only the most active columns remain and all others
+        # are inhibited.
 
-        # print("inhibCols = \n%s" % inhibCols)
+        # This loop should not occur more times then the total number of columns as every
+        # column by then has had it's chance to inhibit all other columns. Usually only
+        # a small number of loops are required.
 
         add_iteration = tf.add(iteration, 1)
 
@@ -718,9 +707,9 @@ class inhibitionCalculator():
         # This must return false for the while loop to end.
         # The calculation is complete when all columns are either inhbited or are active.
 
-        # SHOULD BE THIS return notInhibOrActNum > 0
-        return notInhibOrActNum > 0
-        #return iteration < 10
+        # TODO Should be return notInhibOrActNum > 0
+        #return notInhibOrActNum > 0
+        return iteration < 1
 
     def calculateWinningCols(self, overlapsGrid=None):
         # Take the overlapsGrid and calculate a binary list
@@ -765,14 +754,14 @@ if __name__ == '__main__':
 
     # Some made up inputs to test with
     #colOverlapsGrid = np.random.randint(1, size=(numRows, numCols))
-    # colOverlapsGrid = np.array([[8, 4, 5, 8],
-    #                            [8, 6, 1, 6],
-    #                            [7, 7, 9, 4],
-    #                            [2, 3, 1, 5]])
-    colOverlapsGrid = np.array([[9, 0, 0, 0],
-                               [0, 0, 0, 0],
-                               [0, 0, 9, 0],
-                               [0, 0, 0, 0]])
+    colOverlapsGrid = np.array([[8, 4, 5, 8],
+                               [8, 6, 1, 6],
+                               [7, 7, 9, 4],
+                               [2, 3, 1, 5]])
+    # colOverlapsGrid = np.array([[9, 0, 0, 0],
+    #                            [0, 0, 0, 0],
+    #                            [0, 0, 9, 0],
+    #                            [0, 0, 0, 0]])
     print("colOverlapsGrid = \n%s" % colOverlapsGrid)
 
     inhibCalculator = inhibitionCalculator(numCols, numRows,
@@ -784,9 +773,9 @@ if __name__ == '__main__':
     #cProfile.runctx('activeColumns = inhibCalculator.calculateWinningCols(colOverlapsGrid)', globals(), locals())
     activeColumns = inhibCalculator.calculateWinningCols(colOverlapsGrid)
 
-    #activeColumns = activeColumns.reshape((numRows, numCols))
-    #print "colOverlapsGrid = \n%s" % colOverlapGrid
-    #print "activeColumns = \n%s" % activeColumns
+    activeColumns = activeColumns.reshape((numRows, numCols))
+    print("colOverlapsGrid = \n%s" % colOverlapsGrid)
+    print("activeColumns = \n%s" % activeColumns)
 
 
 

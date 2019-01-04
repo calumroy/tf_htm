@@ -44,6 +44,7 @@ def calculateInhibCols(activeColumnVect, colOverlapVect):
     # of active columns.
     with tf.name_scope('check_actColsCon'):
         ones_mat = tf.ones_like(colConvolePatInd, dtype=tf.int32, name='zeros_mat')
+        # We don't worry about elements that are actually padding. These will not be used.
         get_colsInVect = tf.gather(numActColsInConVect, tf.maximum(col_convolePatInd_negone, zeros_mat), name='check_rCols')
 
         get_colsConPat = tf.where(tf.greater_equal(get_colsInVect, desiredLocalActivity), ones_mat, zeros_mat)
@@ -103,7 +104,7 @@ def calculateInhibCols(activeColumnVect, colOverlapVect):
         # in the input vector have been set to zero.
         numActColsInConVect3 = tf.where(tf.greater(actColsVect, 0), zeros_vec, numActColsInConVect)
         # Calculate if an input vector is larger then a scalar (element wise) desiredLocalActivity.
-        inhibitedColsVect3 = tf.where(tf.greater(numActColsInConVect3, desiredLocalActivity), ones_vec, zeros_vec)
+        inhibitedColsVect3 = tf.where(tf.greater_equal(numActColsInConVect3, desiredLocalActivity), ones_vec, zeros_vec)
         # All three inhibitedColsVect vectors indicate that the column should be inhibited.
         # Add them together to find the total inhibited columns.
         inhibColsVector1 = tf.add(inhibitedColsVect, inhibitedColsVect2)
@@ -142,8 +143,14 @@ def calculateInhibCols(activeColumnVect, colOverlapVect):
                              "\n get_rowActiveColumnVect = \n", get_rowActiveColumnVect,
                              "\n check_colsRowInAct = \n", check_colsRowInAct,
                              "\n",
-                             "\n inhibitedColsConMat2 = \n", inhibitedColsConMat2,
+                             "\n numActColsInConVect = ", numActColsInConVect,
+                             "\n get_colsInVect = \n", get_colsInVect,
+                             "\n get_colsConPat = \n", get_colsConPat,
+                             "\n actColsInCon = \n", actColsInCon,
+                             "\n inhibitedColsConMat = \n", inhibitedColsConMat,
+                             "\n actColsVect = ", actColsVect,
                              "\n inhibitedColsVect = ", inhibitedColsVect,
+                             "\n inhibitedColsConMat2 = \n", inhibitedColsConMat2,
                              "\n inhibColsVector1 = ", inhibColsVector1,
                              "\n inhibitedColsVect2 = ", inhibitedColsVect2,
                              "\n numActColsInConVect = ", numActColsInConVect,
@@ -240,7 +247,7 @@ row_numMat = np.array([[j for i in range(potentialWidth*potentialHeight)]
 print("row_numMat = \n%s" % row_numMat)
 
 #activeColVect = np.array([0, 0, 1, 0, 1, 0, 0, 1, 1])
-activeColVect =  np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0])
+activeColVect =  np.array([0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0])
 
 
 print("activeColVect = \n%s" % activeColVect)

@@ -93,7 +93,7 @@ def calculateTfActiveCol(colOverlapMat):
     print("numCols = ", numCols)
     print("numInhib = ", numInhib)
 
-    desiredLocalActivity = 2
+
     minOverlapIndex = np.array([desiredLocalActivity for i in range(numCols)])
 
     # Create just a vector storing the row numbers for each column.
@@ -206,6 +206,12 @@ def calculateTfActiveCol(colOverlapMat):
 #  [0.588235319, 9.64705849, 0.70588237, 0.823529422, 0.882352948, 0.941176474, 0, 0, 0],
 #  [9.64705849, 0.70588237, 0, 0.882352948, 0.941176474, 0, 0, 0, 0]])
 
+
+
+# np.array([[8, 4, 5, 8],
+#           [8, 6, 1, 6],
+#           [7, 7, 9, 4],
+#           [2, 3, 1, 5]])
 colOverlapMat = np.array(
  [[0, 0, 0, 0, 8.05882359, 4.11764717, 0, 8.29411793, 6.35294104],
  [0, 0, 0, 8.05882359, 4.11764717, 5.17647076, 8.29411793, 6.35294104, 1.41176474],
@@ -224,7 +230,7 @@ colOverlapMat = np.array(
  [7.58823538, 9.64705849, 4.70588255, 3.82352948, 1.88235295, 5.94117641, 0, 0, 0],
  [9.64705849, 4.70588255, 0, 1.88235295, 5.94117641, 0, 0, 0, 0]])
 
-
+desiredLocalActivity = 2
 
 
 print("colOverlapMat = \n%s" % colOverlapMat)

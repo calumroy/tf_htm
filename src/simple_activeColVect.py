@@ -72,9 +72,9 @@ def calculateActiveColumnVect(activeCols, inhibCols, colOverlapVect):
         col_pat = tf.convert_to_tensor(colInConvoleList, dtype=tf.int32, name='col_pat')
         col_num2 = tf.convert_to_tensor(col_num, dtype=tf.int32, name='col_num2')
         row_numMat4 = tf.convert_to_tensor(row_numMat, dtype=tf.int32, name='row_numMat4')
-        cur_inhib_cols4 = tf.convert_to_tensor(inhibCols, dtype=tf.int32, name='cur_inhib_cols4')
+        inhib_cols2 = tf.convert_to_tensor(inhibCols, dtype=tf.int32, name='inhib_cols2')
 
-        cur_inhib_cols_row = tf.gather(cur_inhib_cols4, row_numMat4, name='cur_inhib_cols_row')
+        cur_inhib_cols_row = tf.gather(inhib_cols2, row_numMat4, name='cur_inhib_cols_row')
         col_pat_neg_one = tf.add(col_pat, -1, name='col_pat_neg_one')
 
         zeros_mat = tf.zeros_like(cur_inhib_cols_row, dtype=tf.int32, name='zeros_mat')
@@ -82,11 +82,12 @@ def calculateActiveColumnVect(activeCols, inhibCols, colOverlapVect):
 
         test_meInhib = tf.where(tf.equal(cur_inhib_cols_row, 1), zeros_mat, ones_mat, name='test_meInhib')
         indicies = tf.stack([tf.maximum(col_pat_neg_one, zeros_mat), col_num2], axis=-1)
+        # For each columns colInConvole list check which ones are active.
         set_winners = tf.gather_nd(act_cols, indicies, name='set_winners')
 
         # Get the values at the non negative indicies.
         # We get the value at index zero for the negative indicies. These are not used.
-        cur_inhib_col_pat = tf.gather(cur_inhib_cols4, tf.maximum(col_pat_neg_one, zeros_mat), name='cur_inhib_col_pat')
+        cur_inhib_col_pat = tf.gather(inhib_cols2, tf.maximum(col_pat_neg_one, zeros_mat), name='cur_inhib_col_pat')
 
         check_colNotInhib = tf.where(tf.less(cur_inhib_col_pat, ones_mat), set_winners, test_meInhib, name='check_colNotInhib')
         check_colNotPad = tf.where(tf.greater_equal(col_pat_neg_one, zeros_mat), check_colNotInhib, zeros_mat)
@@ -117,6 +118,7 @@ def calculateActiveColumnVect(activeCols, inhibCols, colOverlapVect):
             # the second is an array of which nodes in the graph you would like to print
             # pr_mult = tf.Print(mult_y, [mult_y, newGrid], summarize = 25)
             print_out = tf.print("\n Printing Tensors \n"
+                                 "\n col_pat_neg_one = \n", col_pat_neg_one,
                                  "\n colOverlapVect = \n", colOverlapVect,
                                  "\n activeColumnVect = \n", activeColumnVect,
                                  "\n cur_inhib_cols_row = \n", cur_inhib_cols_row,
@@ -205,33 +207,39 @@ row_numMat = np.array([[j for i in range(potentialWidth*potentialHeight)]
 #                        [0, 0, 1, 1]])
 
 
-activeCols = np.array(
-                     [[0, 0, 0, 0, 1, 0, 0, 0, 0],
-                      [0, 0, 0, 1, 0, 0, 0, 0, 0],
-                      [0, 0, 0, 0, 0, 0, 0, 0, 1],
-                      [0, 0, 0, 0, 0, 0, 0, 1, 0],
-                      [0, 1, 0, 0, 0, 0, 0, 0, 0],
-                      [0, 0, 0, 0, 0, 0, 0, 0, 1],
-                      [0, 0, 0, 0, 0, 0, 0, 1, 0],
-                      [0, 0, 0, 0, 0, 0, 1, 0, 0],
-                      [0, 0, 0, 0, 0, 0, 0, 0, 1],
-                      [0, 0, 0, 0, 0, 1, 0, 0, 0],
-                      [0, 0, 0, 0, 1, 0, 0, 0, 0],
-                      [0, 0, 0, 1, 0, 0, 0, 0, 0],
-                      [0, 0, 0, 0, 0, 1, 0, 0, 0],
-                      [0, 0, 1, 0, 0, 0, 0, 0, 0],
-                      [0, 1, 0, 0, 0, 0, 0, 0, 0],
-                      [1, 0, 0, 0, 0, 0, 0, 0, 0]])
+activeCols = (
+            [[0, 0, 0, 0, 1, 0, 0, 1, 0],
+             [0, 0, 0, 1, 0, 0, 1, 0, 0],
+             [0, 0, 0, 0, 0, 1, 0, 0, 1],
+             [0, 0, 0, 0, 1, 0, 0, 1, 0],
+             [0, 1, 0, 0, 1, 0, 0, 0, 0],
+             [0, 0, 0, 1, 0, 0, 0, 0, 1],
+             [0, 0, 1, 0, 0, 0, 0, 1, 0],
+             [0, 1, 0, 0, 0, 0, 1, 0, 0],
+             [0, 1, 0, 0, 0, 1, 0, 0, 0],
+             [1, 0, 0, 0, 0, 1, 0, 0, 0],
+             [0, 0, 0, 1, 1, 0, 0, 0, 0],
+             [0, 1, 0, 1, 0, 0, 0, 0, 0],
+             [0, 1, 1, 0, 0, 0, 0, 0, 0],
+             [0, 1, 1, 0, 0, 0, 0, 0, 0],
+             [1, 1, 0, 0, 0, 0, 0, 0, 0],
+             [1, 0, 0, 0, 1, 0, 0, 0, 0]])
 
 
 print("activeCols = \n%s" % activeCols)
 # Create just a vector storing if a column is inhibited or not
 # inhibCols = np.array([random.randint(0, 1) for i in range(width*height)])
 # inhibCols = np.array([1, 1, 1, 0, 0, 0, 0, 0, 0])
-#inhibCols = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-inhibCols = np.array([0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1])
+inhibCols = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+#inhibCols = np.array([0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1])
 
 print("inhibCols = \n%s" % inhibCols)
+
+
+# colOverlapMat = np.array([[8, 4, 5, 8],
+#                           [8, 6, 1, 6],
+#                           [7, 7, 9, 4],
+#                           [2, 3, 1, 5]])
 # colOverlapMat = np.random.randint(10, size=(3, 3))
 # colOverlapMat = np.array(
 #                          [[8, 8, 8],
@@ -250,8 +258,8 @@ print("inhibCols = \n%s" % inhibCols)
 # Create a vector of the overlap values for each column
 # colOverlapVect = overlapsGridTie.flatten()
 
-colOverlapVect = np.array([9.05882359, 0.117647059, 0.176470593, 0.235294119, 0.294117659, 0.352941185, 0.411764711, 0.470588237, 0.529411793, 0.588235319, 9.64705849, 0.70588237, 0.764705896, 0.823529422, 0.882352948, 0.941176474])
-
+#colOverlapVect = np.array([9.05882359, 0.117647059, 0.176470593, 0.235294119, 0.294117659, 0.352941185, 0.411764711, 0.470588237, 0.529411793, 0.588235319, 9.64705849, 0.70588237, 0.764705896, 0.823529422, 0.882352948, 0.941176474])
+colOverlapVect = np.array([8.05882359, 4.11764717, 5.17647076, 8.23529434, 8.29411793, 6.35294104, 1.41176474, 6.47058821, 7.52941179, 7.58823538, 9.64705849, 4.70588255, 2.7647059, 3.82352948, 1.88235295, 5.94117641])
 
 # Create the NonPaddingSumVect
 nonPaddingSumVect = calculateNonPaddingSumVect(colInConvoleList)

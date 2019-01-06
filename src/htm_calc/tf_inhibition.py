@@ -220,13 +220,12 @@ class inhibitionCalculator():
                                               "\n self.activeColumnVectFinal = ", self.activeColumnVectFinal,
                                               "\n self.globalStepNumFinal = ", self.globalStepNumFinal,
                                               "\n self.notInhibOrActNumFinal = ", self.notInhibOrActNumFinal,
-                                              summarize=200)
+                                              summarize=20)
 
                 # Make sure the print_out is performed during the graph execution.
                 with tf.control_dependencies([self.print_out]):
                     # Perform some tf operation so the print out occurs.
                     self.activeColumnVectFinalPrint = tf.multiply(self.activeColumnVectFinal, 1)
-                    self.inhibColsFinal_print = tf.multiply(self.inhibColsFinal, 1)
 
     def calculateConvolePattern(self, inputGrid):
         '''
@@ -725,25 +724,33 @@ class inhibitionCalculator():
 
             # Merge all the summaries into one tensorflow operation
             merge = tf.summary.merge_all()
+            self.summary_writer = tf.summary.FileWriter(self.logsPath, graph=tf.get_default_graph())
 
             if overlapsGrid is not None:
+                run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+                run_metadata = tf.RunMetadata()
+
                 activeColumns = sess.run([self.activeColumnVectFinalPrint],
-                                         feed_dict={self.colOverlapsGrid: overlapsGrid})
+                                         feed_dict={self.colOverlapsGrid: overlapsGrid},
+                                         options=run_options,
+                                         run_metadata=run_metadata)
+
+                i = 1
+                self.summary_writer.add_run_metadata(run_metadata, 'step%d' % i)
             else:
                 activeColumns = sess.run([self.activeColumnVectFinalPrint])
 
-            self.summary_writer = tf.summary.FileWriter(self.logsPath, graph=tf.get_default_graph())
+
 
             activeColumns = activeColumns[0]
             print("activeColumns = \n%s " % (activeColumns))
-            # print("inhibitedCols = \n%s" % inhibitedCols)
-            # print("inhibitedCols, notInhibOrActNum = %s, %s" % (inhibitedCols, notInhibOrActNum))
+
+
+            print('Adding run metadata for', i)
 
             print("\nRun the command line:\n"
                   "--> tensorboard --logdir=/tmp/tensorflow_logs "
                   "\nThen open http://0.0.0.0:6006/ into your web browser")
-
-        # activeColumnVect = tf_activeColumns
 
         return activeColumns
 
@@ -752,21 +759,18 @@ if __name__ == '__main__':
     potWidth = 3
     potHeight = 3
     centerInhib = 1
-    numRows = 4
-    numCols = 4
+    numRows = 800
+    numCols = 800
     desiredLocalActivity = 2
     minOverlap = 1
 
     # Some made up inputs to test with
-    #colOverlapsGrid = np.random.randint(1, size=(numRows, numCols))
-    colOverlapsGrid = np.array([[8, 4, 5, 8],
-                               [8, 6, 1, 6],
-                               [7, 7, 9, 4],
-                               [2, 3, 1, 5]])
-    # colOverlapsGrid = np.array([[9, 0, 0, 0],
-    #                            [0, 0, 0, 0],
-    #                            [0, 0, 9, 0],
-    #                            [0, 0, 0, 0]])
+    colOverlapsGrid = np.random.randint(10, size=(numRows, numCols))
+    # colOverlapsGrid = np.array([[8, 4, 5, 8],
+    #                            [8, 6, 1, 6],
+    #                            [7, 7, 9, 4],
+    #                            [2, 3, 1, 5]])
+
     print("colOverlapsGrid = \n%s" % colOverlapsGrid)
 
     inhibCalculator = inhibitionCalculator(numCols, numRows,

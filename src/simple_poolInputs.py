@@ -186,8 +186,8 @@ class poolInputs():
 
 if __name__ == '__main__':
 
-    potWidth = 3
-    potHeight = 3
+    potWidth = 30
+    potHeight = 30
     centerInhib = 1
     numRows = 800
     numCols = 800
